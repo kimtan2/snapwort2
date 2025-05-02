@@ -1,0 +1,1592 @@
+File Name: layout.tsx
+Location: ./app/layout.tsx
+Content:
+'use client';
+import './globals.css';
+import { Plus_Jakarta_Sans } from 'next/font/google';
+import { BottomNav } from '@/components/BottomNav';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Cloud } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { LanguageSelector } from '@/components/LanguageSelector';
+import { LanguageProvider, useLanguage } from '@/lib/LanguageContext';
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-jakarta',
+});
+
+function LayoutContent({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { language } = useLanguage();
+  
+  return (
+    <html lang={language} className={jakarta.variable}>
+      <body className="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+        <main className="min-h-screen flex flex-col pb-20">
+          <header className="py-4 px-6">
+            <div className="max-w-7xl mx-auto flex justify-between items-center">
+              <div className="flex justify-between items-center">
+                <Link href="/" className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+                  SnapWort
+                </Link>
+              </div>
+              <div className="flex items-center space-x-4">
+                {pathname === '/library' && (
+                  <Link
+                    href="/backup"
+                    className="flex flex-col items-center justify-center py-3 px-4 rounded-xl transition-all text-gray-600 hover:text-primary-600 hover:bg-gray-50"
+                  >
+                    <Cloud className={cn("h-5 w-5 mb-1")} />
+                    <span className="text-xs font-medium">Backup</span>
+                  </Link>
+                )}
+                <LanguageSelector />
+              </div>
+            </div>
+          </header>
+          <div className="flex-1">
+            {children}
+          </div>
+          <BottomNav />
+        </main>
+      </body>
+    </html>
+  );
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <LanguageProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </LanguageProvider>
+  );
+}
+
+
+--------------------------------------------------------------------------------
+File Name: page.tsx
+Location: ./app/page.tsx
+Content:
+'use client';
+
+import EnhancedWordSearch from '@/components/EnhancedWordSearch';
+
+export default function Home() {
+  return (
+    <div className="flex flex-col min-h-[80vh] items-center justify-center px-4">
+      <EnhancedWordSearch />
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+File Name: page.tsx
+Location: ./app/library/page.tsx
+Content:
+'use client';
+
+import { Library } from '@/components/Library';
+
+export default function LibraryPage() {
+  return (
+    <>
+      <div className="flex-1 overflow-auto">
+        <Library />
+      </div>
+    </>
+  );
+} 
+
+--------------------------------------------------------------------------------
+File Name: page.tsx
+Location: ./app/feed/page.tsx
+Content:
+'use client';
+
+import { useEffect, useState, useRef } from 'react';
+import { db } from '@/lib/db';
+import { Lernstoff } from '@/components/Lernstoff';
+import { OwnLernstoff } from '@/components/OwnLernstoff';
+
+export default function FeedPage() {
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [totalCards, setTotalCards] = useState(0);
+  const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'de'>('en');
+  const [feedMode, setFeedMode] = useState<'own' | 'all'>('own');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Load initial points and card count
+    const loadData = async () => {
+      const points = await db.points.toArray();
+      const total = points.reduce((sum, record) => sum + record.points, 0);
+      setTotalPoints(total || 0);
+      
+      // Count unique task IDs from points records
+      const uniqueTaskIds = new Set(points.map(p => p.taskId));
+      setTotalCards(uniqueTaskIds.size);
+    };
+    loadData();
+
+    // Listen for points updates
+    const handlePointsAdded = (event: CustomEvent) => {
+      const addedPoints = event.detail.points || 0;
+      setTotalPoints(prev => prev + addedPoints);
+      
+      // Increment card count
+      setTotalCards(prev => prev + 1);
+    };
+
+    window.addEventListener('pointsAdded', handlePointsAdded as EventListener);
+    return () => {
+      window.removeEventListener('pointsAdded', handlePointsAdded as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 shadow-sm">
+        <div className="max-w-md mx-auto px-4 py-4 relative">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Feed</h1>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-gray-600">Cards:</span>
+                <span className="font-bold">{totalCards}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-gray-600">Points:</span>
+                <span className="font-bold">{totalPoints}</span>
+              </div>
+              <div className="relative" ref={dropdownRef}>
+                <button 
+                  onClick={toggleDropdown}
+                  className="flex items-center justify-center w-8 h-8 rounded-full overflow-hidden border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {selectedLanguage === 'en' ? '🇬🇧' : '🇩🇪'}
+                </button>
+                
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 py-2 w-36 bg-white rounded-md shadow-lg z-20">
+                    <button 
+                      onClick={() => {
+                        setSelectedLanguage('en');
+                        setDropdownOpen(false);
+                      }}
+                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-gray-100 ${selectedLanguage === 'en' ? 'bg-gray-100' : ''}`}
+                    >
+                      <span className="mr-2">🇬🇧</span>
+                      English
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSelectedLanguage('de');
+                        setDropdownOpen(false);
+                      }}
+                      className={`flex items-center px-4 py-2 text-sm w-full text-left hover:bg-gray-100 ${selectedLanguage === 'de' ? 'bg-gray-100' : ''}`}
+                    >
+                      <span className="mr-2">🇩🇪</span>
+                      German
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-4 flex justify-center">
+            <div className="inline-flex items-center p-1 rounded-full bg-gray-200">
+              <button
+                type="button"
+                onClick={() => setFeedMode('own')}
+                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+                  feedMode === 'own'
+                    ? 'bg-white text-gray-900 shadow'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Own
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeedMode('all')}
+                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+                  feedMode === 'all'
+                    ? 'bg-white text-gray-900 shadow'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto pb-20">
+        <div className="max-w-md mx-auto px-4 py-4">
+          {feedMode === 'all' && <Lernstoff language={selectedLanguage} />}
+          {feedMode === 'own' && <OwnLernstoff language={selectedLanguage} />}
+        </div>
+      </div>
+    </div>
+  );
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/gemini-followup/route.ts
+Content:
+import { NextResponse } from 'next/server';
+
+type ChatContext = {
+  question: string;
+  answer: string;
+};
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { question, language, previousContext } = await request.json();
+    
+    if (!question) {
+      return NextResponse.json({ 
+        error: 'Question is required'
+      }, { status: 400 });
+    }
+    
+    console.log(`API gemini-followup called for question in ${language}`);
+    
+    try {
+      // Get follow-up answer with Gemini
+      const result = await getFollowUpWithGemini(question, language, previousContext);
+      
+      console.log('Successfully generated follow-up response');
+      return NextResponse.json(result);
+    } catch (error) {
+      console.error(`Error getting follow-up response:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+}
+
+async function getFollowUpWithGemini(
+  question: string, 
+  language: 'en' | 'de' = 'en',
+  previousContext?: ChatContext[]
+): Promise<{
+  answer: string;
+  modelUsed: string;
+}> {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    
+    // Build the conversation content
+    const contents: any[] = [];
+    
+    // Add system message
+    contents.push({
+      role: 'user',
+      parts: [{ 
+        text: `You are a helpful language tutor specializing in ${language === 'en' ? 'English' : 'German'} language. 
+        Provide educational, clear, and comprehensive answers to language questions. Format your response with markdown.` 
+      }]
+    });
+    
+    // Add previous context if available
+    if (previousContext && previousContext.length > 0) {
+      // Add the initial query and its answer
+      contents.push({
+        role: 'user',
+        parts: [{ text: previousContext[0].question }]
+      });
+      
+      contents.push({
+        role: 'model',
+        parts: [{ text: previousContext[0].answer }]
+      });
+      
+      // Add any follow-up conversations (skip the first one as we've already added it)
+      for (let i = 1; i < previousContext.length; i++) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: previousContext[i].question }]
+        });
+        
+        contents.push({
+          role: 'model',
+          parts: [{ text: previousContext[i].answer }]
+        });
+      }
+    }
+    
+    // Add the current question
+    contents.push({
+      role: 'user',
+      parts: [{ text: question }]
+    });
+    
+    // Call the Gemini model using REST API
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API error (followup): ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result || !result.candidates || result.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API (followup)');
+    }
+
+    const content = result.candidates[0].content;
+    if (!content || !content.parts || content.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API (followup)');
+    }
+
+    const answer = content.parts[0].text;
+    
+    return {
+      answer,
+      modelUsed: 'gemini'
+    };
+  } catch (error) {
+    console.error("Error calling Gemini API for follow-up:", error);
+    throw error;
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/followup/route.ts
+Content:
+import { NextResponse } from 'next/server';
+import { getFollowUp } from '@/lib/openai';
+
+export async function POST(req: Request) {
+  try {
+    const { question, language, previousContext } = await req.json();
+
+    if (!question || !language) {
+      return NextResponse.json(
+        { error: 'Question and language are required' },
+        { status: 400 }
+      );
+    }
+
+    try {
+      // Always use the DEFAULT_MODEL_PROVIDER configuration from lib/openai.ts
+      const result = await getFollowUp(question, language, previousContext);
+
+      return NextResponse.json({ 
+        answer: result.answer,
+        modelUsed: result.modelUsed
+      });
+    } catch (serviceError) {
+      console.error('Service error:', serviceError);
+      return NextResponse.json(
+        { error: 'The language model failed to respond. Please try again later.' },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error('Error processing follow-up question:', error);
+    return NextResponse.json(
+      { error: 'Failed to process your request' },
+      { status: 500 }
+    );
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/word-suggestions/route.ts
+Content:
+import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { word, language } = await request.json();
+    
+    if (!word) {
+      return NextResponse.json({ 
+        error: 'Word is required'
+      }, { status: 400 });
+    }
+    
+    console.log(`API word-suggestions called for word "${word}" in ${language}`);
+    
+    try {
+      // Get suggestions for the word with Gemini 2.0 Flash Lite
+      const suggestions = await getWordSuggestionsWithGemini(word, language);
+      
+      console.log('Successfully generated suggestions');
+      return NextResponse.json(suggestions);
+    } catch (error) {
+      console.error(`Error getting word suggestions:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+}
+
+async function getWordSuggestionsWithGemini(word: string, language: 'en' | 'de' = 'en'): Promise<{
+  examples: string[];
+  tips: string[];
+}> {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    
+    const prompt = `
+I'm learning ${language === 'en' ? 'English' : 'German'} vocabulary and want to know how to use the word "${word}" in sentences.
+
+Please provide usage examples and tips for this word.
+
+Format your response as a JSON object with the following structure:
+{
+  "examples": [
+    "example sentence 1 using the word",
+    "example sentence 2 using the word",
+    "example sentence 3 using the word"
+  ],
+  "tips": [
+    "usage tip 1",
+    "usage tip 2",
+    "alternative phrasings or collocations"
+  ]
+}
+
+Provide 3-5 natural, everyday examples that show different ways to use the word. The tips should help me understand how to use the word properly in different contexts.`;
+
+    // Call the Gemini model using REST API
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await response.json();
+    console.log('Gemini API response received for word suggestions');
+
+    if (!result || !result.candidates || result.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    const content = result.candidates[0].content;
+    if (!content || !content.parts || content.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API');
+    }
+
+    const textContent = content.parts[0].text;
+    
+    // Extract JSON from markdown if needed
+    const jsonRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
+    const match = textContent.match(jsonRegex);
+    
+    let jsonContent = textContent;
+    if (match && match[1]) {
+      jsonContent = match[1].trim();
+    }
+    
+    try {
+      const parsedData = JSON.parse(jsonContent);
+      
+      // Return the suggestions
+      return {
+        examples: Array.isArray(parsedData.examples) ? parsedData.examples : [],
+        tips: Array.isArray(parsedData.tips) ? parsedData.tips : []
+      };
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      // Provide a fallback response
+      return {
+        examples: [
+          `Here's an example with "${word}".`,
+          `You can use "${word}" in various contexts.`
+        ],
+        tips: [
+          `Try to use "${word}" in everyday conversations.`,
+          `Practice makes perfect!`
+        ]
+      };
+    }
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    throw error;
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/check-sentence/route.ts
+Content:
+import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { sentence, word, language } = await request.json();
+    
+    if (!sentence || !word) {
+      return NextResponse.json({ 
+        error: 'Both sentence and word are required'
+      }, { status: 400 });
+    }
+    
+    console.log(`API check-sentence called for word "${word}" in ${language}`);
+    
+    try {
+      // Check the sentence with Gemini 2.0 Flash Lite
+      const feedback = await checkSentenceWithGemini(sentence, word, language);
+      
+      console.log('Successfully generated feedback');
+      return NextResponse.json(feedback);
+    } catch (error) {
+      console.error(`Error checking sentence:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+}
+
+async function checkSentenceWithGemini(
+  sentence: string, 
+  word: string, 
+  language: 'en' | 'de' = 'en'
+): Promise<{
+  isCorrect: boolean;
+  feedback: string;
+  improvedSentence?: string;
+}> {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    
+    const prompt = `
+I'm learning ${language === 'en' ? 'English' : 'German'} vocabulary and trying to practice using the word "${word}" in a sentence.
+
+Here is my sentence: "${sentence}"
+
+Please check if my sentence correctly uses the word "${word}" and provide feedback.
+
+Format your response as a JSON object with the following structure:
+{
+  "isCorrect": boolean, // true if the sentence is correct grammatically and uses the word properly, false otherwise
+  "feedback": "detailed feedback on the sentence, including grammar issues, word usage, etc. Place great emphasis on the word usage and whether it is used naturally or not. How would the native speaker use the word?",
+  "improvedSentence": "a corrected or improved version of the original sentence that maintains the same meaning. Also, include some other much better expanded examples of how to use the word correctly and naturally."
+}
+
+Make sure the feedback is encouraging and helpful, focusing on both strengths and areas for improvement.`;
+
+    // Call the Gemini model using REST API
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2, // Lower temperature for more consistent feedback
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await response.json();
+    console.log('Gemini API response received for sentence check');
+
+    if (!result || !result.candidates || result.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    const content = result.candidates[0].content;
+    if (!content || !content.parts || content.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API');
+    }
+
+    const textContent = content.parts[0].text;
+    
+    // Extract JSON from markdown if needed
+    const jsonRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
+    const match = textContent.match(jsonRegex);
+    
+    let jsonContent = textContent;
+    if (match && match[1]) {
+      jsonContent = match[1].trim();
+    }
+    
+    try {
+      const parsedData = JSON.parse(jsonContent);
+      
+      // Return the feedback results
+      return {
+        isCorrect: parsedData.isCorrect || false,
+        feedback: parsedData.feedback || "I couldn't properly analyze your sentence, but it looks like you're making an effort. Keep practicing!",
+        improvedSentence: parsedData.improvedSentence || undefined
+      };
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      // Provide a fallback response
+      return {
+        isCorrect: false,
+        feedback: "I encountered an error while analyzing your sentence, but it's great that you're practicing. Try again with another sentence!",
+        improvedSentence: undefined
+      };
+    }
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    throw error;
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/generate-tasks-own/route.ts
+Content:
+import { NextResponse } from 'next/server';
+
+interface WordTask {
+  language: string;
+  question: string;
+  meantWord: string;
+  alternativeWords: string[];
+  example: string;
+}
+
+interface Task {
+  id: string;
+  type: 'free_response';
+  question: string;
+  answer: string;
+  alternativeWords: string[];
+  example: string;
+  points: number;
+  isCustom: boolean;
+}
+
+// Function to extract JSON from markdown code blocks if needed
+function extractJsonFromMarkdown(text: string): string {
+  const jsonRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
+  const match = text.match(jsonRegex);
+  
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  
+  return text;
+}
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { count = 1,  language = 'en' } = await request.json();
+    console.log(`API generate-tasks-own called with language: ${language}, count: ${count}`);
+    
+    try {
+      // Generate tasks using Vertex AI with Gemini 2.0 Flash Lite
+      const tasks = await generateTasksWithVertexAI(count, language);
+      
+      if (!tasks || !Array.isArray(tasks)) {
+        console.error('Invalid response format from Vertex AI:', tasks);
+        throw new Error('Invalid response format from Vertex AI');
+      }
+
+      console.log(`Successfully generated ${tasks.length} tasks`);
+      return NextResponse.json(tasks);
+    } catch (error) {
+      console.error(`Error generating tasks for language ${language}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+}
+
+async function generateTasksWithVertexAI(count: number, language: 'en' | 'de' = 'en'): Promise<Task[]> {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    
+    // Using the REST API directly since the Node.js client doesn't support API key auth directly
+    const prompt = `Generate a language learning task for ${language === 'en' ? 'English' : 'German'} learners. 
+    
+The task should help users practice their vocabulary and language skills with practical, everyday scenarios.
+
+Format your response as a JSON object with the following structure:
+{
+  "language": "${language}",
+  "question": "A question that prompts using a specific word or phrase in ${language === 'en' ? 'English' : 'German'}",
+  "meantWord": "The target word or phrase that should be used in the answer",
+  "alternativeWords": ["array", "of", "similar", "words", "or", "synonyms"],
+  "example": "An example sentence using the target word in context"
+}
+
+Make the question natural and conversational. Focus on common, useful vocabulary and phrases.`;
+
+    // Call the Gemini model using REST API
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await response.json();
+    console.log('Gemini API response received');
+
+    if (!result || !result.candidates || result.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    const content = result.candidates[0].content;
+    if (!content || !content.parts || content.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API');
+    }
+
+    const textContent = content.parts[0].text;
+    console.log(`Raw content from Gemini API (first 100 chars): ${textContent.substring(0, 100)}...`);
+
+    // Extract JSON if needed and parse it
+    const jsonContent = extractJsonFromMarkdown(textContent);
+    console.log("Extracted JSON content:", jsonContent);
+    
+    try {
+      const parsedData: WordTask = JSON.parse(jsonContent);
+      
+      // Transform the received data into the required task format
+      const timestamp = Date.now();
+      const tasks = [];
+      
+      for (let i = 0; i < count; i++) {
+        tasks.push({
+          id: `task_${timestamp}_${Math.floor(Math.random() * 1000)}_${i}`,
+          type: 'free_response' as const,
+          question: parsedData.question,
+          answer: parsedData.meantWord,
+          alternativeWords: parsedData.alternativeWords,
+          example: parsedData.example,
+          points: 15,
+          isCustom: true
+        });
+      }
+      
+      return tasks;
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      
+      // Fallback for invalid responses
+      const timestamp = Date.now();
+      return [{
+        id: `task_${timestamp}_${Math.floor(Math.random() * 1000)}`,
+        type: 'free_response' as const,
+        question: language === 'en' 
+          ? "How would you express 'I'm making progress' in a sentence about learning a new language?" 
+          : "Wie würden Sie 'Ich mache Fortschritte' in einem Satz über das Erlernen einer neuen Sprache verwenden?",
+        answer: language === 'en' ? "making progress" : "Fortschritte machen",
+        alternativeWords: language === 'en' 
+          ? ["improving", "advancing", "developing"] 
+          : ["sich verbessern", "vorankommen", "sich entwickeln"],
+        example: language === 'en'
+          ? "I'm making progress with my Spanish vocabulary." 
+          : "Ich mache Fortschritte mit meinem spanischen Wortschatz.",
+        points: 15,
+        isCustom: true
+      }];
+    }
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    throw error;
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/gemini-language/route.ts
+Content:
+import { NextResponse } from 'next/server';
+
+// Types for request
+type QueryType = 'definition' | 'check' | 'ask';
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { word, language, queryType } = await request.json();
+    
+    if (!word) {
+      return NextResponse.json({ 
+        error: 'Word or query is required'
+      }, { status: 400 });
+    }
+    
+    console.log(`API gemini-language called for: "${word}" with type ${queryType} in ${language}`);
+    
+    try {
+      // Get language assistance with Gemini
+      const result = await getLanguageAssistanceWithGemini(word, language, queryType);
+      
+      console.log('Successfully generated language assistance');
+      return NextResponse.json(result);
+    } catch (error) {
+      console.error(`Error getting language assistance:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+}
+
+async function getLanguageAssistanceWithGemini(
+  query: string, 
+  language: 'en' | 'de' = 'en', 
+  queryType: QueryType = 'definition'
+): Promise<{
+  title: string;
+  answer: string;
+  suggestions: string[];
+  modelUsed: string;
+}> {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    
+    // Create system prompt based on query type
+    let systemPrompt = '';
+    let userPrompt = '';
+    
+    if (queryType === 'definition') {
+      systemPrompt = `You are a precise language assistant specialized in providing clear definitions in ${language === 'en' ? 'English' : 'German'}. Format your response with markdown, focusing on the exact meaning, usage, and examples of the term.  Be as precise as possible, please avoid writing more than 100 words!!!`;
+      userPrompt = language === 'en' 
+        ? `Provide a precise, clear definition for: "${query}" in English. Include part of speech, meaning, usage examples, and related forms if relevant.`
+        : `Gib eine präzise, klare Definition für: "${query}" auf Deutsch. Füge Wortart, Bedeutung, Verwendungsbeispiele und verwandte Formen an, wenn relevant.`;
+    } 
+    else if (queryType === 'check') {
+      systemPrompt = `You are a language checker that identifies errors, awkward phrasings, and unnatural expressions in ${language === 'en' ? 'English' : 'German'} text. Provide specific corrections and improvements. Format your response with markdown.  Be as precise as possible, please avoid writing more than 100 words!!!`;
+      userPrompt = language === 'en'
+        ? `Check this phrase or sentence for correctness and naturalness: "${query}" in English. Point out any errors, awkward phrasings, or unnatural expressions. Suggest improvements.`
+        : `Überprüfe diesen Satz oder diese Phrase auf Korrektheit und Natürlichkeit: "${query}" auf Deutsch. Zeige Fehler, ungeschickte Formulierungen oder unnatürliche Ausdrücke auf. Schlage Verbesserungen vor.`;
+    }
+    else if (queryType === 'ask') {
+      systemPrompt = `You are a language expert that answers specific questions about ${language === 'en' ? 'English' : 'German'} language usage, grammar, vocabulary, and linguistics. Address the exact question directly and comprehensively. Format your response with markdown. Be as precise as possible, please avoid writing more than 100 words!!!`;
+      userPrompt = language === 'en'
+        ? `Answer this language-related question: "${query}" in English. Provide a comprehensive explanation tailored specifically to this question.`
+        : `Beantworte diese sprachbezogene Frage: "${query}" auf Deutsch. Gib eine umfassende Erklärung, die speziell auf diese Frage zugeschnitten ist.`;
+    }
+    
+    // First request: Get the main answer
+    const responseAnswer = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: systemPrompt },
+                { text: userPrompt }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!responseAnswer.ok) {
+      const errorData = await responseAnswer.json();
+      throw new Error(`Gemini API error (answer): ${JSON.stringify(errorData)}`);
+    }
+
+    const resultAnswer = await responseAnswer.json();
+    if (!resultAnswer || !resultAnswer.candidates || resultAnswer.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API (answer)');
+    }
+
+    const contentAnswer = resultAnswer.candidates[0].content;
+    if (!contentAnswer || !contentAnswer.parts || contentAnswer.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API (answer)');
+    }
+
+    const answer = contentAnswer.parts[0].text;
+    
+    // Second request: Get meta information (title and suggestions)
+    const metaPrompt = `Based on this language query: "${query}" in ${language === 'en' ? 'English' : 'German'}, provide:
+    1. A concise title that represents the main word, idiom, or expression being discussed (not the question itself)
+    2. Four relevant language learning follow-up questions. They should refer to the request and be related to language learning, grammar, usage, idioms, expressions, etc.
+    
+    Return your response as a JSON object with these fields:
+    - "title": The main word, idiom, or expression (keep it short and focused)
+    - "suggestions": An array of exactly 4 relevant language learning follow-up questions`;
+
+    const responseMeta = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: "You extract the key information from language queries and generate helpful follow-up questions for language learners. Respond using valid JSON format only." },
+                { text: metaPrompt }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 512,
+          },
+        }),
+      }
+    );
+
+    if (!responseMeta.ok) {
+      const errorData = await responseMeta.json();
+      throw new Error(`Gemini API error (meta): ${JSON.stringify(errorData)}`);
+    }
+
+    const resultMeta = await responseMeta.json();
+    if (!resultMeta || !resultMeta.candidates || resultMeta.candidates.length === 0) {
+      throw new Error('Empty response from Gemini API (meta)');
+    }
+
+    const contentMeta = resultMeta.candidates[0].content;
+    if (!contentMeta || !contentMeta.parts || contentMeta.parts.length === 0) {
+      throw new Error('Invalid response format from Gemini API (meta)');
+    }
+
+    const metaText = contentMeta.parts[0].text;
+    
+    // Extract JSON from the response
+    let jsonContent = metaText;
+    const jsonRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
+    const match = metaText.match(jsonRegex);
+    
+    if (match && match[1]) {
+      jsonContent = match[1].trim();
+    }
+    
+    let title = '';
+    let suggestions: string[] = [];
+    
+    try {
+      const parsedData = JSON.parse(jsonContent);
+      title = parsedData.title || extractTitleFromQuery(query);
+      suggestions = Array.isArray(parsedData.suggestions) ? parsedData.suggestions : generateDefaultSuggestions(query, language);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      title = extractTitleFromQuery(query);
+      suggestions = generateDefaultSuggestions(query, language);
+    }
+    
+    // Ensure exactly 4 suggestions
+    while (suggestions.length < 4) {
+      suggestions.push(`Tell me more about ${title}`);
+    }
+    suggestions = suggestions.slice(0, 4);
+    
+    return {
+      title,
+      answer,
+      suggestions,
+      modelUsed: 'gemini'
+    };
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    throw error;
+  }
+}
+
+// Helper function to extract a title from the query if the API call fails
+function extractTitleFromQuery(query: string): string {
+  // Simple extraction - get the first few words, max 30 chars
+  const words = query.split(/\s+/);
+  let title = words.slice(0, 3).join(' ');
+  
+  if (title.length > 30) {
+    title = title.substring(0, 27) + '...';
+  }
+  
+  return title;
+}
+
+// Generate default suggestions if the API call fails
+function generateDefaultSuggestions(query: string, language: 'en' | 'de'): string[] {
+  const simplifiedQuery = query.length > 20 ? query.substring(0, 20) + '...' : query;
+  
+  if (language === 'en') {
+    return [
+      `What is the etymology of "${simplifiedQuery}"?`,
+      `What are some common phrases using "${simplifiedQuery}"?`,
+      `How would I use "${simplifiedQuery}" in a sentence?`,
+      `What are the synonyms for "${simplifiedQuery}"?`
+    ];
+  } else {
+    return [
+      `Was ist die Etymologie von "${simplifiedQuery}"?`,
+      `Was sind gebräuchliche Redewendungen mit "${simplifiedQuery}"?`,
+      `Wie würde ich "${simplifiedQuery}" in einem Satz verwenden?`,
+      `Was sind Synonyme für "${simplifiedQuery}"?`
+    ];
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/meaning/route.ts
+Content:
+import { NextResponse } from 'next/server';
+import { getLanguageAssistance } from '@/lib/openai';
+
+export async function POST(req: Request) {
+  try {
+    const { word, language, queryType } = await req.json();
+
+    if (!word || !language) {
+      return NextResponse.json(
+        { error: 'Word and language are required' },
+        { status: 400 }
+      );
+    }
+
+    try {
+      // Pass queryType to getLanguageAssistance
+      const result = await getLanguageAssistance(word, language, queryType);
+
+      // Pass the model information back to the client
+      return NextResponse.json({
+        title: result.title,
+        answer: result.answer,
+        suggestions: result.suggestions,
+        modelUsed: result.modelUsed
+      });
+    } catch (serviceError) {
+      console.error('Service error:', serviceError);
+      return NextResponse.json(
+        { error: 'The language model failed to respond. Please try again later.' },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error('Error getting word meaning:', error);
+    return NextResponse.json(
+      { error: 'Failed to process your request' },
+      { status: 500 }
+    );
+  }
+}
+
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/check-answer/route.ts
+Content:
+import { NextResponse } from 'next/server';
+import { checkAnswer } from '@/lib/mistral';
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.MISTRAL_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Mistral API key is not configured. Please set the MISTRAL_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const {  answer, correctAnswer,  question = '' } = await request.json();
+    
+    try {
+      const result = await checkAnswer(answer, correctAnswer, question);
+      return NextResponse.json(result);
+    } catch (error) {
+      // Pass the error directly to the UI
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request'
+    }, { status: 400 });
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: route.ts
+Location: ./app/api/generate-tasks/route.ts
+Content:
+import { NextResponse } from 'next/server';
+import { generateTasks } from '@/lib/mistral';
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.MISTRAL_API_KEY) {
+      return NextResponse.json({ 
+        error: 'Mistral API key is not configured. Please set the MISTRAL_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+    
+    const { count = 1, previousTasks = [], language = 'en' } = await request.json();
+    console.log(`API generate-tasks called with language: ${language}, count: ${count}`);
+    
+    try {
+      // Generate tasks using the Mistral API
+      console.log(`Calling mistral.generateTasks with language: ${language}`);
+      const tasks = await generateTasks(count, previousTasks, language);
+      
+      if (!tasks || !Array.isArray(tasks)) {
+        console.error('Invalid response format from Mistral API:', tasks);
+        throw new Error('Invalid response format from Mistral API');
+      }
+
+      console.log(`Successfully generated ${tasks.length} tasks`);
+      return NextResponse.json(tasks);
+    } catch (error) {
+      // Pass the error directly to the UI
+      console.error(`Error generating tasks for language ${language}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ 
+        error: errorMessage
+      }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error parsing request:', error);
+    
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to process request' 
+    }, { status: 400 });
+  }
+} 
+
+--------------------------------------------------------------------------------
+File Name: page.tsx
+Location: ./app/backup/page.tsx
+Content:
+'use client';
+
+import { useState } from 'react';
+import { Cloud, Download, Upload, Database, Loader, AlertCircle } from 'lucide-react';
+import { authenticateWithGoogle, backupToGoogleDrive, restoreFromGoogleDrive } from '@/lib/googleDrive';
+import { backupToFirestore, restoreFromFirestore } from '@/lib/firestore';
+
+export default function BackupPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [userName, setUserName] = useState('');
+  const [backupType, setBackupType] = useState<'google' | 'firestore' | null>(null);
+  const [progress, setProgress] = useState<'idle' | 'uploading' | 'downloading'>('idle');
+
+  const handleAuth = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const success = await authenticateWithGoogle();
+      if (success) {
+        setIsAuthenticated(true);
+        setMessage('Successfully authenticated with Google Drive');
+      } else {
+        setMessage('Authentication failed. Please try again.');
+      }
+    } catch (error) {
+      setError('Failed to authenticate: ' + (error as Error).message);
+      setMessage('');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!userName && backupType === 'firestore') {
+      setError('Please enter your name to backup to Firestore');
+      return;
+    }
+
+    setIsLoading(true);
+    setProgress('uploading');
+    setError(null);
+    setMessage('');
+    
+    try {
+      if (backupType === 'google') {
+        const success = await backupToGoogleDrive();
+        if (success) {
+          setMessage(`Successfully backed up library to Google Drive`);
+        } else {
+          setError(`Failed to backup library to Google Drive. Please try again.`);
+        }
+      } else if (backupType === 'firestore') {
+        const result = await backupToFirestore(userName);
+        if (result.success) {
+          setMessage(`Successfully backed up ${result.data?.itemCount || 0} items to Firestore`);
+        } else {
+          setError(result.error || 'Failed to backup library to Firestore');
+        }
+      }
+    } catch (error) {
+      setError('Failed to upload: ' + (error as Error).message);
+    } finally {
+      setIsLoading(false);
+      setProgress('idle');
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!userName && backupType === 'firestore') {
+      setError('Please enter your name to restore from Firestore');
+      return;
+    }
+
+    setIsLoading(true);
+    setProgress('downloading');
+    setError(null);
+    setMessage('');
+    
+    try {
+      if (backupType === 'google') {
+        const success = await restoreFromGoogleDrive();
+        if (success) {
+          setMessage(`Successfully downloaded library from Google Drive`);
+        } else {
+          setError(`Failed to download library from Google Drive. Please try again.`);
+        }
+      } else if (backupType === 'firestore') {
+        const result = await restoreFromFirestore(userName);
+        if (result.success) {
+          setMessage(`Successfully restored ${result.data?.itemCount || 0} items from Firestore`);
+        } else {
+          setError(result.error || 'Failed to restore library from Firestore');
+        }
+      }
+    } catch (error) {
+      setError('Failed to download: ' + (error as Error).message);
+    } finally {
+      setIsLoading(false);
+      setProgress('idle');
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-10">
+      <div className="flex flex-col items-center mb-8">
+        <Cloud className="w-16 h-16 text-primary-600 mb-4" />
+        <h1 className="text-2xl font-bold text-gray-800">Backup Library</h1>
+        <p className="text-gray-600 text-center mt-2">
+          Sync your word library with Google Drive or Firestore
+        </p>
+      </div>
+
+      {/* Loading state UI */}
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center p-4 mb-6 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="flex items-center justify-center mb-3">
+            <Loader className="w-6 h-6 text-primary-600 animate-spin mr-2" />
+            <span className="text-gray-700 font-medium">
+              {progress === 'uploading' 
+                ? 'Uploading to ' + (backupType === 'google' ? 'Google Drive' : 'Firestore') 
+                : progress === 'downloading' 
+                  ? 'Downloading from ' + (backupType === 'google' ? 'Google Drive' : 'Firestore')
+                  : 'Processing...'}
+            </span>
+          </div>
+          <p className="text-gray-500 text-sm text-center">Please wait while we process your request...</p>
+        </div>
+      )}
+
+      {/* Success message */}
+      {message && !isLoading && (
+        <div className="flex items-start bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-6">
+          <div className="flex-shrink-0 mt-0.5">
+            <svg className="h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <p className="ml-3">{message}</p>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && !isLoading && (
+        <div className="flex items-start bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
+          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="ml-3">{error}</p>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {!backupType ? (
+          <>
+            <button
+              onClick={() => setBackupType('google')}
+              className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-medium py-3 px-4 rounded-lg flex items-center justify-center"
+            >
+              <img src="/google-drive-icon.svg" alt="Google Drive" className="w-5 h-5 mr-2" />
+              Backup to Google Drive
+            </button>
+            
+            <button
+              onClick={() => setBackupType('firestore')}
+              className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-medium py-3 px-4 rounded-lg flex items-center justify-center"
+            >
+              <Database className="w-5 h-5 mr-2" />
+              Backup to Firestore
+            </button>
+          </>
+        ) : backupType === 'google' ? (
+          <>
+            {!isAuthenticated ? (
+              <button
+                onClick={handleAuth}
+                disabled={isLoading}
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-medium py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <img src="/google-drive-icon.svg" alt="Google Drive" className="w-5 h-5 mr-2" />
+                {isLoading ? 'Connecting...' : 'Connect to Google Drive'}
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleUpload}
+                  disabled={isLoading}
+                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Upload className="w-5 h-5 mr-2" />
+                  Backup to Google Drive
+                </button>
+                
+                <button
+                  onClick={handleDownload}
+                  disabled={isLoading}
+                  className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-medium py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Download className="w-5 h-5 mr-2" />
+                  Restore from Google Drive
+                </button>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-4">
+              <label htmlFor="userName" className="block text-sm font-medium text-gray-700 mb-2">
+                Your Name
+              </label>
+              <input
+                type="text"
+                id="userName"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Enter your name"
+                disabled={isLoading}
+              />
+            </div>
+
+            <button
+              onClick={handleUpload}
+              disabled={isLoading}
+              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Upload className="w-5 h-5 mr-2" />
+              Backup to Firestore
+            </button>
+            
+            <button
+              onClick={handleDownload}
+              disabled={isLoading}
+              className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-medium py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              Restore from Firestore
+            </button>
+          </>
+        )}
+
+        <button
+          onClick={() => {
+            setBackupType(null);
+            setUserName('');
+            setIsAuthenticated(false);
+            setError(null);
+            setMessage('');
+          }}
+          className="w-full text-gray-600 hover:text-gray-800 font-medium py-2"
+          disabled={isLoading}
+        >
+          Change Backup Method
+        </button>
+      </div>
+    </div>
+  );
+} 
+
+--------------------------------------------------------------------------------
