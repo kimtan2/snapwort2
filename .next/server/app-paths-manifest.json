@@ -1,7 +1,5 @@
 {
-  "/api/gemini-language/route": "app/api/gemini-language/route.js",
-  "/api/gemini-followup/route": "app/api/gemini-followup/route.js",
+  "/library/page": "app/library/page.js",
   "/page": "app/page.js",
-  "/feed/page": "app/feed/page.js",
-  "/library/page": "app/library/page.js"
+  "/islands/page": "app/islands/page.js"
 }

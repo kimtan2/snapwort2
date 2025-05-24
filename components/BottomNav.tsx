@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpenText, Search, Home } from 'lucide-react';
+import { BookOpenText, Search, Home, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function BottomNav() {
@@ -58,6 +58,22 @@ export function BottomNav() {
               pathname === '/library' ? 'text-primary-700' : 'text-gray-500'
             )} />
             <span className="text-xs font-medium">Library</span>
+          </Link>
+          
+          <Link
+            href="/islands"
+            className={cn(
+              'flex flex-col items-center justify-center py-3 px-6 rounded-xl transition-all',
+              pathname.startsWith('/islands')
+                ? 'bg-primary-50 text-primary-700' 
+                : 'text-gray-600 hover:text-primary-600 hover:bg-gray-50'
+            )}
+          >
+            <Globe className={cn(
+              "h-5 w-5 mb-1",
+              pathname.startsWith('/islands') ? 'text-primary-700' : 'text-gray-500'
+            )} />
+            <span className="text-xs font-medium">Islands</span>
           </Link>
         </div>
       </div>

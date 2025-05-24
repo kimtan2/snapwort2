@@ -57,7 +57,10 @@ async function getFollowUpWithGemini(
     const apiKey = process.env.GOOGLE_API_KEY;
     
     // Build the conversation content
-    const contents: any[] = [];
+    const contents: {
+      role: 'user' | 'model';
+      parts: { text: string }[];
+    }[] = [];
     
     // Add system message
     contents.push({
@@ -141,8 +144,8 @@ async function getFollowUpWithGemini(
       answer,
       modelUsed: 'gemini'
     };
-  } catch (error) {
-    console.error("Error calling Gemini API for follow-up:", error);
-    throw error;
+  } catch {
+    console.error("Error calling Gemini API for follow-up:");
+    throw new Error("Failed to get response from Gemini API");
   }
 } 

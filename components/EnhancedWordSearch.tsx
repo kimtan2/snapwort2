@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { cn } from '@/lib/utils';
-import { Search, Book, ArrowRight, Bookmark, LoaderCircle, Volume2, Send, Save, BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
+import { Book, ArrowRight, Bookmark, LoaderCircle, Volume2, Send, Save, BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { speakText } from '@/lib/textToSpeech';
 import { useLanguage } from '@/lib/LanguageContext';

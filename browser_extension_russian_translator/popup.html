@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Russian Translator</title>
+  
+  <!-- Load CSS -->
+  <link rel="stylesheet" href="popup.css">
+  
+  <!-- Load Firebase SDKs directly from local files -->
+  <script src="firebase-app.js"></script>
+  <script src="firebase-firestore.js"></script>
+  
+  <!-- Load Firebase initializer -->
+  <script src="firebase-initializer.js"></script>
+  
+  <!-- Load popup script -->
+  <script src="popup.js"></script>
+</head>
+<body>
+  <h1>Russian Translator Settings</h1>
+
+  <div class="tab-container">
+    <div class="tab-buttons">
+      <button class="tab-button active" data-tab="basic">Basic Settings</button>
+      <button class="tab-button" data-tab="firebase">Firebase</button>
+      <button class="tab-button" data-tab="debug">Debug</button>
+    </div>
+    
+    <div class="tab-content">
+      <!-- Basic Settings Tab -->
+      <div class="tab-panel active" id="basic-tab">
+        <div class="section">
+          <label for="api-key">Gemini API Key:</label>
+          <input type="text" id="api-key" placeholder="Enter your Gemini API key">
+          <div class="api-info">
+            Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
+          </div>
+          <button id="save-button">Save API Key</button>
+        </div>
+        
+        <div class="section">
+          <label for="app-url">App URL:</label>
+          <input type="text" id="app-url" placeholder="Enter your app URL">
+          <button id="save-url-button">Save App URL</button>
+        </div>
+        
+        <div class="section">
+          <label for="language-select">Library Language:</label>
+          <select id="language-select">
+            <option value="de">German</option>
+            <option value="en">English</option>
+          </select>
+          <button id="save-language-button">Save Language</button>
+        </div>
+
+        <div class="section">
+          <label for="user-id">User ID:</label>
+          <input type="text" id="user-id" placeholder="Enter your user ID">
+          <div class="api-info">
+            This ID will be associated with your saved words in Firestore
+          </div>
+          <button id="save-user-id-button">Save User ID</button>
+        </div>
+      </div>
+      
+      <!-- Firebase Tab -->
+      <div class="tab-panel" id="firebase-tab">
+        <div class="section">
+          <label for="firebase-config">Firebase Configuration:</label>
+          <textarea id="firebase-config" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..."}'></textarea>
+          <div class="api-info">
+            Paste your Firebase configuration JSON object here.
+            Get this from your Firebase console under Project Settings.
+          </div>
+          <button id="save-firebase-button">Save Firebase Config</button>
+        </div>
+        <div class="section">
+          <button id="test-firebase-button">Test Firebase Connection</button>
+        </div>
+      </div>
+
+      <!-- Debug Tab -->
+      <div class="tab-panel" id="debug-tab">
+        <div class="section">
+          <label>Firebase Status:</label>
+          <div id="firebase-status" class="debug-box">
+            Not initialized
+          </div>
+        </div>
+        <div class="section">
+          <button id="refresh-debug-button">Refresh Status</button>
+        </div>
+        <div class="section">
+          <label>Firebase SDK Diagnostic:</label>
+          <div class="debug-box">
+            <div>SDK Available: <span id="firebase-sdk-available">Checking...</span></div>
+            <div>SDK Version: <span id="firebase-sdk-version">Unknown</span></div>
+            <div>Initialized: <span id="firebase-initialized">No</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="status-message" class="status" style="display: none;"></div>
+  
+  <div class="instructions">
+    <strong>How to use:</strong>
+    <ol>
+      <li>Configure Firebase in the Firebase tab</li>
+      <li>Enter your API key and other settings</li>
+      <li>Select any word or text on a webpage</li>
+      <li>Right-click and select "Get Russian Definition"</li>
+      <li>View the Russian definition in the popup</li>
+      <li>Click "Save to Library" to save words to Firestore</li>
+    </ol>
+  </div>
+</body>
+</html> 

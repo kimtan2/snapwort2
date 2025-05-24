@@ -1,19 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { db, type Word, type FollowUp } from '@/lib/db';
+import { db, type Word } from '@/lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Book, Trash2, Search, ChevronDown, ChevronUp, Volume2, MessageCircle, Plus, Save, Edit2, X, Filter, BookOpen, CheckCircle2, HelpCircle, Calendar, Clock } from 'lucide-react';
+import { Book, Trash2, Search, ChevronDown, ChevronUp, Volume2, MessageCircle, Plus, Save, Edit2, X, Filter, BookOpen, CheckCircle2, HelpCircle, Calendar, Clock, Cloud, Database } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { speakText } from '@/lib/textToSpeech';
 import { AddVocabularyModal } from '@/components/AddVocabularyModal';
 import { useLanguage } from '@/lib/LanguageContext';
+import { FirestoreSyncModal } from '@/components/FirestoreSyncModal';
 
 type SortOption = 'newest' | 'oldest' | 'alphabetical';
-type FilterOption = 'all' | 'definition' | 'check' | 'ask';
+type FilterOption = 'all' | 'definition' | 'check' | 'ask' | 'speaking';
 
 // Helper type for grouped words
 type DateGroup = {
@@ -32,6 +33,7 @@ export function Library() {
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [filterOption, setFilterOption] = useState<FilterOption>('all');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   
   // Format date to display
   const formatDate = (date: Date, short = false) => {
@@ -113,9 +115,13 @@ export function Library() {
       
       // Apply filter if not 'all'
       if (filterOption !== 'all') {
-        query = query.filter(word => word.queryType === filterOption || 
-          // Handle words saved before queryType was added
-          (filterOption === 'definition' && word.queryType === undefined));
+        if (filterOption === 'speaking') {
+          query = query.filter(word => word.speaking === true);
+        } else {
+          query = query.filter(word => word.queryType === filterOption || 
+            // Handle words saved before queryType was added
+            (filterOption === 'definition' && word.queryType === undefined));
+        }
       }
       
       return query.toArray();
@@ -141,6 +147,17 @@ export function Library() {
   const handleDelete = async (id?: number) => {
     if (id) {
       await db.words.delete(id);
+    }
+  };
+
+  const toggleSpeaking = async (id?: number) => {
+    if (id) {
+      const word = await db.words.get(id);
+      if (word) {
+        await db.words.update(id, {
+          speaking: !word.speaking
+        });
+      }
     }
   };
 
@@ -209,7 +226,13 @@ export function Library() {
   };
 
   // Get class name based on query type
-  const getQueryTypeClass = (queryType?: string) => {
+  const getQueryTypeClass = (queryType?: string, speaking?: boolean) => {
+    // If speaking is true, prioritize speaking styling
+    if (speaking) {
+      return 'border-l-4 border-l-green-400 border-t-2 border-b-2 border-r-2 border-green-200 bg-green-50';
+    }
+    
+    // Otherwise use the default query type styles
     switch(queryType) {
       case 'check':
         return 'border-l-4 border-l-green-400';
@@ -230,13 +253,23 @@ export function Library() {
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Your Library</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Word
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setShowSyncModal(true)}
+            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            title="Sync from browser extension"
+          >
+            <Cloud className="w-5 h-5 mr-2" />
+            Sync
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Word
+          </button>
+        </div>
       </div>
 
       {/* Filtering and sorting controls */}
@@ -292,6 +325,16 @@ export function Library() {
                 >
                   <HelpCircle className="w-4 h-4 mr-2" />
                   Questions
+                </button>
+                <button
+                  onClick={() => { setFilterOption('speaking'); setIsFilterMenuOpen(false); }}
+                  className={cn(
+                    "flex items-center w-full px-3 py-2 text-sm rounded-md",
+                    filterOption === 'speaking' ? "bg-green-50 text-green-600" : "hover:bg-gray-50"
+                  )}
+                >
+                  <Volume2 className="w-4 h-4 mr-2" />
+                  Speaking Practice
                 </button>
               </div>
             </div>
@@ -351,9 +394,19 @@ export function Library() {
           {groupedByDate.map((group) => (
             <div key={group.date} className="space-y-4">
               <div className="sticky top-0 z-20 bg-white py-2">
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 text-gray-500 mr-2" />
-                  <h2 className="text-sm font-medium text-gray-600">{group.formattedDate}</h2>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 text-gray-500 mr-2" />
+                    <h2 className="text-sm font-medium text-gray-600">{group.formattedDate}</h2>
+                  </div>
+                  
+                  {/* Count speaking entries in this group */}
+                  {group.words.some(word => word.speaking) && (
+                    <div className="flex items-center space-x-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                      <Volume2 className="h-3 w-3" />
+                      <span>{group.words.filter(word => word.speaking).length}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="h-px w-full bg-gradient-to-r from-gray-200 to-gray-50 mt-2"></div>
               </div>
@@ -363,13 +416,14 @@ export function Library() {
                   key={word.id} 
                   className={cn(
                     "bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-200",
-                    getQueryTypeClass(word.queryType)
+                    getQueryTypeClass(word.queryType, word.speaking)
                   )}
                 >
                   <div 
                     className={cn(
                       "px-4 py-3 cursor-pointer",
-                      expandedWords.has(word.id!) ? "border-b border-gray-100" : ""
+                      expandedWords.has(word.id!) ? "border-b border-gray-100" : "",
+                      word.speaking ? "bg-green-50" : ""
                     )}
                     onClick={() => toggleWord(word.id!)}
                   >
@@ -386,8 +440,22 @@ export function Library() {
                           />
                         ) : (
                           <div className="flex items-center space-x-2 flex-grow">
-                            <span className="mr-1">{getQueryTypeIcon(word.queryType)}</span>
-                            <h3 className="text-lg font-medium text-gray-900">{word.word}</h3>
+                            {word.speaking ? (
+                              <span className="mr-1 flex items-center">
+                                <Volume2 className="h-4 w-4 text-green-600" />
+                              </span>
+                            ) : (
+                              <span className="mr-1">{getQueryTypeIcon(word.queryType)}</span>
+                            )}
+                            <h3 className={cn(
+                              "text-lg font-medium", 
+                              word.speaking ? "text-green-800" : "text-gray-900"
+                            )}>{word.word}</h3>
+                            {word.speaking && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                Speaking
+                              </span>
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); speakText(word.word, word.language); }}
                               className="p-1.5 rounded-full hover:bg-gray-100 transition-colors"
@@ -447,6 +515,17 @@ export function Library() {
                             </button>
                             <button 
                               className="transition-transform duration-200 ml-1"
+                              onClick={(e) => { e.stopPropagation(); toggleSpeaking(word.id); }}
+                              title={word.speaking ? "Remove from speaking practice" : "Add to speaking practice"}
+                            >
+                              {word.speaking ? (
+                                <Volume2 className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Volume2 className="h-4 w-4 text-gray-400" />
+                              )}
+                            </button>
+                            <button 
+                              className="transition-transform duration-200 ml-1"
                               onClick={(e) => { e.stopPropagation(); toggleWord(word.id!); }}
                             >
                               {expandedWords.has(word.id!) ? (
@@ -462,10 +541,25 @@ export function Library() {
                   </div>
                   
                   {expandedWords.has(word.id!) && (
-                    <div className="p-4 bg-gray-50">
+                    <div className={cn(
+                      "p-4", 
+                      word.speaking ? "bg-green-50" : "bg-gray-50"
+                    )}>
                       <div className="prose prose-sm max-w-none">
                         <ReactMarkdown>{word.meaning}</ReactMarkdown>
                       </div>
+                      
+                      {word.speaking && (
+                        <div className="mt-4 p-3 bg-green-100 rounded-lg">
+                          <div className="flex items-center text-green-800 mb-2">
+                            <Volume2 className="h-5 w-5 mr-2" />
+                            <span className="font-medium">Speaking Practice Notes</span>
+                          </div>
+                          <p className="text-sm text-green-700">
+                            This word is marked for speaking practice. Use the listen button to hear the pronunciation and practice speaking it.
+                          </p>
+                        </div>
+                      )}
                       
                       {word.followUpHistory && word.followUpHistory.length > 0 && (
                         <div className="mt-4">
@@ -505,6 +599,11 @@ export function Library() {
         </div>
       )}
 
+      <FirestoreSyncModal 
+        isOpen={showSyncModal} 
+        onClose={() => setShowSyncModal(false)} 
+      />
+      
       {showAddModal && (
         <AddVocabularyModal 
           language={language} 

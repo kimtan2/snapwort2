@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1000px" height="800px" viewBox="0 0 1000 800" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Language Islands Map Background</title>
+    <defs>
+        <linearGradient x1="0%" y1="0%" x2="100%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#E6F7FF" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="Map" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <rect id="Background" fill="url(#linearGradient-1)" x="0" y="0" width="1000" height="800"></rect>
+        <path d="M100,200 C150,150 200,180 250,160 C300,140 350,160 400,180 C450,200 500,190 550,170 C600,150 650,140 700,160 C750,180 800,200 850,190 C900,180 950,150 980,130" id="Wave1" stroke="#E6F7FF" stroke-width="3" opacity="0.5"></path>
+        <path d="M50,300 C100,280 150,290 200,310 C250,330 300,320 350,300 C400,280 450,270 500,290 C550,310 600,320 650,300 C700,280 750,270 800,290 C850,310 900,320 950,300" id="Wave2" stroke="#E6F7FF" stroke-width="3" opacity="0.5"></path>
+        <path d="M20,400 C70,380 120,390 170,410 C220,430 270,420 320,400 C370,380 420,370 470,390 C520,410 570,420 620,400 C670,380 720,370 770,390 C820,410 870,420 920,400 C970,380 990,370 990,370" id="Wave3" stroke="#E6F7FF" stroke-width="3" opacity="0.5"></path>
+        <path d="M50,500 C100,480 150,490 200,510 C250,530 300,520 350,500 C400,480 450,470 500,490 C550,510 600,520 650,500 C700,480 750,470 800,490 C850,510 900,520 950,500" id="Wave4" stroke="#E6F7FF" stroke-width="3" opacity="0.5"></path>
+        <path d="M100,600 C150,580 200,590 250,610 C300,630 350,620 400,600 C450,580 500,570 550,590 C600,610 650,620 700,600 C750,580 800,570 850,590 C900,610 950,620 980,600" id="Wave5" stroke="#E6F7FF" stroke-width="3" opacity="0.5"></path>
+        <circle id="Island1" fill="#E6F7FF" opacity="0.3" cx="200" cy="250" r="30"></circle>
+        <circle id="Island2" fill="#E6F7FF" opacity="0.3" cx="700" cy="400" r="40"></circle>
+        <circle id="Island3" fill="#E6F7FF" opacity="0.3" cx="400" cy="650" r="35"></circle>
+        <circle id="Island4" fill="#E6F7FF" opacity="0.3" cx="750" cy="150" r="25"></circle>
+        <circle id="Island5" fill="#E6F7FF" opacity="0.3" cx="250" cy="700" r="30"></circle>
+    </g>
+</svg>

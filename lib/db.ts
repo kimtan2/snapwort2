@@ -11,6 +11,7 @@ export interface Word {
   meaning: string;
   language: 'en' | 'de';
   queryType?: 'definition' | 'check' | 'ask';
+  speaking?: boolean;
   createdAt: Date;
   followUpHistory?: FollowUp[];
 }
@@ -36,6 +37,10 @@ export class SnapWortDB extends Dexie {
     
     this.version(2).stores({
       words: '++id, word, language, createdAt, queryType'
+    });
+    
+    this.version(3).stores({
+      words: '++id, word, language, createdAt, queryType, speaking'
     });
   }
 

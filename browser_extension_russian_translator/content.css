@@ -1,0 +1,247 @@
+/* Styles for Russian Translator content script */
+
+.russian-translator-popup {
+  position: absolute;
+  width: 350px;
+  max-height: 450px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 3px 15px rgba(0, 0, 0, 0.25);
+  z-index: 2147483647;
+  padding: 18px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  overflow-y: auto;
+  display: none;
+  border: 1px solid #e0e0e0;
+}
+
+.popup-header {
+  font-weight: bold;
+  margin-bottom: 12px;
+  color: #333;
+  font-size: 15px;
+}
+
+.popup-context {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.popup-spinner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.popup-error {
+  color: #e74c3c;
+  padding: 12px;
+  background-color: #fdf3f2;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.popup-error-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+  font-size: 15px;
+}
+
+.popup-title {
+  border-bottom: 1px solid #e7e7e7;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.popup-word {
+  font-weight: bold;
+  font-size: 18px;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+
+.popup-definition {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.popup-buttons {
+  text-align: right;
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.save-to-library-btn {
+  padding: 6px 14px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  margin-right: 10px;
+  transition: background-color 0.2s;
+}
+
+.save-to-library-btn:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+.save-to-library-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-to-library-btn.saving {
+  background-color: #FFA500;
+}
+
+.save-to-library-btn.saved {
+  background-color: #2ecc71;
+}
+
+.save-to-library-btn.error {
+  background-color: #e74c3c;
+}
+
+.close-popup-btn {
+  padding: 6px 14px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #555;
+  transition: background-color 0.2s;
+}
+
+.close-popup-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.lernen-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 2147483646;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.lernen-popup {
+  position: fixed;
+  bottom: 70px;
+  right: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 2147483647;
+  padding: 15px;
+  width: 200px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.lernen-popup-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.go-to-app-link {
+  display: block;
+  text-align: center;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  font-weight: bold;
+}
+
+.close-lernen-btn {
+  margin-top: 10px;
+  padding: 5px 10px;
+  background: #e0e0e0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Definition formatting styles */
+.russian-word {
+  font-weight: bold;
+  color: #2980b9;
+  font-size: 18px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+}
+
+.example-label {
+  color: #555;
+  font-weight: bold;
+}
+
+.example-text {
+  color: #444;
+  margin-left: 10px;
+  margin-top: 5px;
+}
+
+.example-sentence {
+  color: #333;
+  margin-left: 20px;
+  font-style: italic;
+  margin-top: 3px;
+}
+
+.cyrillic-translation {
+  color: #2980b9;
+  margin-left: 20px;
+  margin-top: 3px;
+}
+
+.content-english {
+  color: #333;
+  margin-top: 5px;
+}
+
+.content-divider {
+  border: none;
+  border-top: 1px solid #f0f0f0;
+  margin: 12px 0;
+}
+
+.content-space {
+  height: 8px;
+}
+
+.content-space-small {
+  height: 5px;
+} 

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Firebase Test Page</title>
+  
+  <!-- Load Firebase SDKs directly from local files -->
+  <script src="firebase-app.js"></script>
+  <script src="firebase-firestore.js"></script>
+  
+  <!-- Load Firebase initializer -->
+  <script src="firebase-initializer.js"></script>
+  
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    
+    h1, h2 {
+      color: #2c3e50;
+    }
+    
+    .card {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+    }
+    
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    .console {
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+    
+    .console-line {
+      margin: 3px 0;
+    }
+    
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 8px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+      font-size: 14px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Firebase Test Page</h1>
+  <p>This page allows you to test the Firebase setup in the Russian Translator extension.</p>
+  
+  <div class="card">
+    <h2>Firebase Configuration</h2>
+    <textarea id="firebase-config" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..."}'></textarea>
+    <button id="load-config">Load From Storage</button>
+    <button id="initialize-firebase">Initialize Firebase</button>
+  </div>
+  
+  <div class="card">
+    <h2>Test Firestore Connection</h2>
+    <button id="test-connection" disabled>Test Connection</button>
+    <div id="connection-status"></div>
+  </div>
+  
+  <div class="card">
+    <h2>Save Word to Firestore</h2>
+    <div>
+      <label for="word">Word:</label>
+      <input type="text" id="word" placeholder="Enter a word" value="тест">
+    </div>
+    <div>
+      <label for="definition">Definition:</label>
+      <textarea id="definition" placeholder="Enter the definition">This is a test word saved from the test page.</textarea>
+    </div>
+    <div>
+      <label for="user-id">User ID:</label>
+      <input type="text" id="user-id" placeholder="Enter your user ID" value="test_user">
+    </div>
+    <div>
+      <label for="language">Language:</label>
+      <select id="language">
+        <option value="de">German</option>
+        <option value="en">English</option>
+        <option value="ru" selected>Russian</option>
+      </select>
+    </div>
+    <button id="save-word" disabled>Save Word</button>
+    <div id="save-status"></div>
+  </div>
+  
+  <div class="card">
+    <h2>Console Output</h2>
+    <div id="console" class="console"></div>
+    <button id="clear-console">Clear Console</button>
+  </div>
+  
+  <div class="card">
+    <h2>Direct Firestore Test</h2>
+    <p>This test bypasses most abstractions and tries to write directly to Firestore.</p>
+    <button id="direct-test">Run Direct Test</button>
+    <div id="direct-test-status"></div>
+  </div>
+  
+  <script>
+    // DOM Elements
+    const firebaseConfigTextarea = document.getElementById('firebase-config');
+    const loadConfigButton = document.getElementById('load-config');
+    const initializeFirebaseButton = document.getElementById('initialize-firebase');
+    const testConnectionButton = document.getElementById('test-connection');
+    const connectionStatusDiv = document.getElementById('connection-status');
+    const wordInput = document.getElementById('word');
+    const definitionTextarea = document.getElementById('definition');
+    const userIdInput = document.getElementById('user-id');
+    const languageSelect = document.getElementById('language');
+    const saveWordButton = document.getElementById('save-word');
+    const saveStatusDiv = document.getElementById('save-status');
+    const consoleDiv = document.getElementById('console');
+    const clearConsoleButton = document.getElementById('clear-console');
+    
+    // Direct test button
+    const directTestButton = document.getElementById('direct-test');
+    const directTestStatusDiv = document.getElementById('direct-test-status');
+    
+    // Log a message to the console
+    function log(message) {
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      line.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+      consoleDiv.appendChild(line);
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+      console.log(message);
+    }
+    
+    // Show a status message
+    function showStatus(element, message, isSuccess) {
+      element.textContent = message;
+      element.className = isSuccess ? 'success' : 'error';
+      element.style.padding = '10px';
+      element.style.marginTop = '10px';
+      element.style.borderRadius = '4px';
+    }
+    
+    // Load Firebase configuration from storage
+    loadConfigButton.addEventListener('click', async () => {
+      log('Loading Firebase configuration from storage...');
+      
+      try {
+        const config = await window.firebaseInit.loadConfig();
+        firebaseConfigTextarea.value = JSON.stringify(config, null, 2);
+        log('Firebase configuration loaded successfully');
+      } catch (error) {
+        log(`Error loading Firebase configuration: ${error.message}`);
+        showStatus(connectionStatusDiv, `Error: ${error.message}`, false);
+      }
+    });
+    
+    // Initialize Firebase
+    initializeFirebaseButton.addEventListener('click', async () => {
+      log('Initializing Firebase...');
+      
+      try {
+        const configText = firebaseConfigTextarea.value.trim();
+        
+        if (!configText) {
+          throw new Error('Please enter a Firebase configuration');
+        }
+        
+        const config = JSON.parse(configText);
+        await window.firebaseInit.initialize(config);
+        
+        log('Firebase initialized successfully');
+        showStatus(connectionStatusDiv, 'Firebase initialized successfully!', true);
+        
+        // Enable test buttons
+        testConnectionButton.disabled = false;
+        saveWordButton.disabled = false;
+      } catch (error) {
+        log(`Error initializing Firebase: ${error.message}`);
+        showStatus(connectionStatusDiv, `Error: ${error.message}`, false);
+      }
+    });
+    
+    // Test Firestore connection
+    testConnectionButton.addEventListener('click', async () => {
+      log('Testing Firestore connection...');
+      
+      try {
+        await window.firebaseInit.testConnection();
+        log('Firestore connection test successful');
+        showStatus(connectionStatusDiv, 'Connection successful!', true);
+      } catch (error) {
+        log(`Error testing Firestore connection: ${error.message}`);
+        showStatus(connectionStatusDiv, `Error: ${error.message}`, false);
+      }
+    });
+    
+    // Save word to Firestore
+    saveWordButton.addEventListener('click', async () => {
+      const word = wordInput.value.trim();
+      const definition = definitionTextarea.value.trim();
+      const userId = userIdInput.value.trim();
+      const language = languageSelect.value;
+      
+      if (!word || !definition || !userId) {
+        showStatus(saveStatusDiv, 'Please fill in all fields', false);
+        return;
+      }
+      
+      log(`Saving word "${word}" to Firestore...`);
+      
+      try {
+        await window.firebaseInit.saveWord(word, definition, userId, language);
+        log('Word saved successfully');
+        showStatus(saveStatusDiv, 'Word saved successfully!', true);
+      } catch (error) {
+        log(`Error saving word: ${error.message}`);
+        showStatus(saveStatusDiv, `Error: ${error.message}`, false);
+      }
+    });
+    
+    // Clear console
+    clearConsoleButton.addEventListener('click', () => {
+      consoleDiv.innerHTML = '';
+    });
+    
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', () => {
+      log('Test page loaded');
+      
+      // Check if Firebase initializer is available
+      if (window.firebaseInit) {
+        log('Firebase initializer found');
+        
+        // If Firebase is already initialized, enable test buttons
+        if (window.firebaseInit.isReady()) {
+          log('Firebase is already initialized');
+          testConnectionButton.disabled = false;
+          saveWordButton.disabled = false;
+        }
+      } else {
+        log('Firebase initializer not found');
+        showStatus(connectionStatusDiv, 'Firebase initializer not found', false);
+      }
+    });
+    
+    // Direct test button
+    directTestButton.addEventListener('click', async () => {
+      log('Running direct Firestore test...');
+      
+      try {
+        if (typeof firebase === 'undefined') {
+          throw new Error('Firebase is not defined');
+        }
+        
+        log('Firebase is defined, checking if initialized...');
+        const currentApps = firebase.apps;
+        log(`Firebase apps count: ${currentApps.length}`);
+        
+        let db;
+        if (currentApps.length === 0) {
+          log('No Firebase apps, initializing one directly...');
+          try {
+            const config = await loadConfigFromStorage();
+            log('Config loaded:', config);
+            firebase.initializeApp(config);
+            log('Firebase app initialized directly');
+          } catch (e) {
+            throw new Error(`Failed to initialize Firebase: ${e.message}`);
+          }
+        } else {
+          log('Firebase already has apps initialized');
+        }
+        
+        // Get Firestore instance
+        log('Getting Firestore instance...');
+        db = firebase.firestore();
+        
+        // Create test document with timestamp
+        const timestamp = new Date().toISOString();
+        const docId = `direct_test_${Date.now()}`;
+        log(`Creating test document with ID: ${docId}`);
+        
+        // Try to write to Firestore
+        await db.collection('vocabulary').doc(docId).set({
+          word: 'директест',
+          meaning: 'A direct test from the test page with timestamp: ' + timestamp,
+          language: 'ru',
+          queryType: 'definition',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          source: 'direct_test',
+          userId: 'test_user',
+          synced: false
+        });
+        
+        log('Direct test successful - document written!');
+        showStatus(directTestStatusDiv, 'Direct test successful! Document written to vocabulary collection.', true);
+      } catch (error) {
+        log(`Direct test failed: ${error.message}`);
+        showStatus(directTestStatusDiv, `Error: ${error.message}`, false);
+      }
+    });
+    
+    // Load config from storage helper function
+    async function loadConfigFromStorage() {
+      return new Promise((resolve, reject) => {
+        chrome.storage.sync.get(['firebaseConfig'], (result) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          
+          if (!result.firebaseConfig) {
+            reject(new Error('No Firebase configuration found in storage'));
+            return;
+          }
+          
+          try {
+            const config = JSON.parse(result.firebaseConfig);
+            resolve(config);
+          } catch (error) {
+            reject(new Error('Invalid Firebase configuration format'));
+          }
+        });
+      });
+    }
+  </script>
+</body>
+</html> 

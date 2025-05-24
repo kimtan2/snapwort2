@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
+import { X, BookOpen, CheckCircle2, HelpCircle, Volume2 } from 'lucide-react';
 import { db } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +16,7 @@ export function AddVocabularyModal({ language, onClose }: AddVocabularyModalProp
   const [word, setWord] = useState('');
   const [meaning, setMeaning] = useState('');
   const [queryType, setQueryType] = useState<QueryType>('definition');
+  const [speaking, setSpeaking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +38,7 @@ export function AddVocabularyModal({ language, onClose }: AddVocabularyModalProp
         meaning: meaning.trim(),
         language,
         queryType,
+        speaking,
         createdAt: new Date(),
         followUpHistory: []
       });
@@ -160,6 +162,20 @@ export function AddVocabularyModal({ language, onClose }: AddVocabularyModalProp
                     Question
                   </button>
                 </div>
+              </div>
+              
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="speaking"
+                  checked={speaking}
+                  onChange={(e) => setSpeaking(e.target.checked)}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+                <label htmlFor="speaking" className="ml-2 flex items-center text-sm text-gray-700">
+                  <Volume2 className="w-4 h-4 mr-1.5 text-green-500" />
+                  Mark as speaking practice
+                </label>
               </div>
               
               <div className="flex justify-end space-x-3 pt-4">
