@@ -5,6 +5,26 @@ import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, Boo
 import { ISLANDS_DATA } from './data';
 import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem, SerializedSavedVocabularyItem } from './types';
 
+// Additional interfaces for answer checking
+interface AnswerAttempt {
+  id: string;
+  userAnswer: string;
+  score: number;
+  feedback: string;
+  improvedAnswer: string;
+  strengths: string[];
+  improvements: string[];
+  timestamp: Date;
+  isTextInput: boolean; // true for text, false for audio
+}
+
+interface AnswerFeedback {
+  score: number;
+  feedback: string;
+  improvedAnswer: string;
+  strengths: string[];
+  improvements: string[];
+}
 
 export function LanguageIslandsApp() {
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
@@ -31,6 +51,14 @@ export function LanguageIslandsApp() {
   const [personalWortschatz, setPersonalWortschatz] = useState<Record<string, SavedVocabularyItem[]>>({});
   const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
   const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<boolean>(false);
+
+  // New state for text input and answer checking
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textAnswer, setTextAnswer] = useState('');
+  const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
+  const [answerAttempts, setAnswerAttempts] = useState<AnswerAttempt[]>([]);
+  const [showAttempts, setShowAttempts] = useState(false);
+  const [currentFeedback, setCurrentFeedback] = useState<AnswerFeedback | null>(null);
 
   // Load saved vocabulary from local storage on component mount
   useEffect(() => {
@@ -91,26 +119,25 @@ export function LanguageIslandsApp() {
   // Toggle personal Wortschatz for a vocabulary item
   const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
     setPersonalWortschatz(prev => {
-      const currentItems = [...(prev[subtopicId] || [])];
+      const currentItems = prev[subtopicId] || [];
       const existingIndex = currentItems.findIndex(vocab => 
         vocab.text === item.text && vocab.meaning === item.meaning
       );
 
-      // Create a new array to avoid mutating the state directly
-      const updatedItems = [...currentItems];
+      let updatedItems: SavedVocabularyItem[];
       
       if (existingIndex >= 0) {
-        // Remove from personal Wortschatz
-        updatedItems.splice(existingIndex, 1);
+        // Remove from personal Wortschatz - create new array without the item
+        updatedItems = currentItems.filter((_, index) => index !== existingIndex);
       } else {
-        // Add to personal Wortschatz
+        // Add to personal Wortschatz - create new array with the item
         const newItem: SavedVocabularyItem = {
           ...item,
-          id: Date.now().toString(),
+          id: `${subtopicId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           dateAdded: new Date(),
           subtopicId: subtopicId
         };
-        updatedItems.push(newItem);
+        updatedItems = [...currentItems, newItem];
       }
 
       return {
@@ -118,6 +145,59 @@ export function LanguageIslandsApp() {
         [subtopicId]: updatedItems
       };
     });
+  };
+
+  // Handle text answer submission
+  const handleTextAnswerSubmit = async () => {
+    if (!textAnswer.trim() || !selectedQuestion || !selectedSubtopic) return;
+    
+    setIsCheckingAnswer(true);
+    setCurrentFeedback(null);
+    
+    try {
+      const response = await fetch('/api/islands/check-answer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          answer: textAnswer.trim(),
+          question: selectedQuestion.question,
+          hints: selectedQuestion.hints,
+          vocabulary: selectedQuestion.vocabulary || [],
+          language: 'en' // or get from context
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check answer');
+      }
+      
+      const feedback = await response.json();
+      setCurrentFeedback(feedback);
+      
+      // Save the attempt
+      const newAttempt: AnswerAttempt = {
+        id: `attempt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userAnswer: textAnswer.trim(),
+        ...feedback,
+        timestamp: new Date(),
+        isTextInput: true
+      };
+      
+      setAnswerAttempts(prev => [newAttempt, ...prev]);
+      
+      // Clear the text input
+      setTextAnswer('');
+      setShowTextInput(false);
+      
+    } catch (error) {
+      console.error('Error checking answer:', error);
+      alert(error instanceof Error ? error.message : 'Failed to check your answer');
+    } finally {
+      setIsCheckingAnswer(false);
+    }
   };
 
   const toggleSubtopicWortschatz = (subtopicId: string) => {
@@ -143,6 +223,14 @@ export function LanguageIslandsApp() {
     )?.subtopics[subtopicId] || null;
     setSelectedSubtopic(subtopic);
     setActiveSubtopicId(subtopicId);
+    
+    // Reset answer-related state when selecting a new question
+    setShowTextInput(false);
+    setTextAnswer('');
+    setCurrentFeedback(null);
+    setAnswerAttempts([]);
+    setShowAttempts(false);
+    resetRecording();
   };
 
   const renderIslandMap = () => {
@@ -248,6 +336,12 @@ export function LanguageIslandsApp() {
   const closeQuestionModal = () => {
     setSelectedQuestion(null);
     resetRecording();
+    // Reset answer-related state
+    setShowTextInput(false);
+    setTextAnswer('');
+    setCurrentFeedback(null);
+    setAnswerAttempts([]);
+    setShowAttempts(false);
   };
 
   return (
@@ -541,16 +635,30 @@ export function LanguageIslandsApp() {
                 </div>
                 
                 <div className="border-t pt-6">
-                  <h4 className="font-semibold text-gray-700 mb-4">Record Your Answer</h4>
+                  <h4 className="font-semibold text-gray-700 mb-4">Provide Your Answer</h4>
                   
+                  {/* Answer Input Options */}
                   <div className="flex items-center justify-center space-x-4 mb-6">
-                    {!isRecording && !recordedAudio && (
-                      <button
-                        onClick={startRecording}
-                        className="flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-full w-14 h-14 shadow-lg"
-                      >
-                        <Mic size={24} />
-                      </button>
+                    {!isRecording && !recordedAudio && !showTextInput && (
+                      <>
+                        {/* Record Audio Button */}
+                        <button
+                          onClick={startRecording}
+                          className="flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-full w-14 h-14 shadow-lg"
+                          title="Record audio answer"
+                        >
+                          <Mic size={24} />
+                        </button>
+                        
+                        {/* Text Input Button */}
+                        <button
+                          onClick={() => setShowTextInput(true)}
+                          className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-full w-14 h-14 shadow-lg"
+                          title="Type text answer"
+                        >
+                          <Plus size={24} />
+                        </button>
+                      </>
                     )}
                     
                     {isRecording && (
@@ -580,6 +688,167 @@ export function LanguageIslandsApp() {
                       </>
                     )}
                   </div>
+                  
+                  {/* Text Input Section */}
+                  {showTextInput && (
+                    <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                      <div className="flex justify-between items-center mb-3">
+                        <h5 className="font-medium text-gray-700">Type Your Answer</h5>
+                        <button
+                          onClick={() => {
+                            setShowTextInput(false);
+                            setTextAnswer('');
+                            setCurrentFeedback(null);
+                          }}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                      
+                      <textarea
+                        value={textAnswer}
+                        onChange={(e) => setTextAnswer(e.target.value)}
+                        placeholder="Type your answer here..."
+                        className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-none"
+                        disabled={isCheckingAnswer}
+                      />
+                      
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={handleTextAnswerSubmit}
+                          disabled={!textAnswer.trim() || isCheckingAnswer}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                          {isCheckingAnswer ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Checking...
+                            </>
+                          ) : (
+                            'Submit Answer'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Current Feedback Display */}
+                  {currentFeedback && (
+                    <div className="bg-white border rounded-xl p-6 shadow-sm mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-gray-800 flex items-center">
+                          <MessageCircle size={20} className="mr-2" />
+                          Answer Feedback
+                        </h4>
+                        <div className="flex items-center">
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            currentFeedback.score >= 80 ? 'bg-green-100 text-green-800' :
+                            currentFeedback.score >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            Score: {currentFeedback.score}/100
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <h5 className="font-medium text-gray-700 mb-2">Overall Feedback:</h5>
+                          <p className="text-gray-600">{currentFeedback.feedback}</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <h5 className="font-medium text-green-700 mb-2">Strengths:</h5>
+                            <ul className="list-disc list-inside text-sm text-green-600 space-y-1">
+                              {currentFeedback.strengths.map((strength, index) => (
+                                <li key={index}>{strength}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          <div>
+                            <h5 className="font-medium text-orange-700 mb-2">Areas to Improve:</h5>
+                            <ul className="list-disc list-inside text-sm text-orange-600 space-y-1">
+                              {currentFeedback.improvements.map((improvement, index) => (
+                                <li key={index}>{improvement}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h5 className="font-medium text-gray-700 mb-2">Improved Version:</h5>
+                          <div className="bg-blue-50 p-3 rounded-lg">
+                            <p className="text-gray-700 italic">{currentFeedback.improvedAnswer}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Answer Attempts Dropdown */}
+                  {answerAttempts.length > 0 && (
+                    <div className="mb-6">
+                      <button
+                        onClick={() => setShowAttempts(!showAttempts)}
+                        className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="font-medium text-gray-700">
+                          Previous Attempts ({answerAttempts.length})
+                        </span>
+                        <ChevronDown 
+                          size={20} 
+                          className={`transition-transform ${showAttempts ? 'transform rotate-180' : ''}`} 
+                        />
+                      </button>
+                      
+                      {showAttempts && (
+                        <div className="mt-3 space-y-3 max-h-96 overflow-y-auto">
+                          {answerAttempts.map((attempt) => (
+                            <div key={attempt.id} className="border rounded-lg p-4 bg-white">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                                    attempt.isTextInput ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
+                                  }`}>
+                                    {attempt.isTextInput ? 'Text' : 'Audio'}
+                                  </span>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    attempt.score >= 80 ? 'bg-green-100 text-green-800' :
+                                    attempt.score >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                    {attempt.score}/100
+                                  </span>
+                                </div>
+                                <span className="text-xs text-gray-500">
+                                  {attempt.timestamp.toLocaleString()}
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-700">Your Answer:</p>
+                                  <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">{attempt.userAnswer}</p>
+                                </div>
+                                
+                                <div>
+                                  <p className="text-sm font-medium text-gray-700">Improved Version:</p>
+                                  <p className="text-sm text-gray-600 bg-blue-50 p-2 rounded italic">{attempt.improvedAnswer}</p>
+                                </div>
+                                
+                                <div className="text-xs text-gray-500">
+                                  <p><strong>Feedback:</strong> {attempt.feedback}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {recordedAudio && !showFeedback && (
                     <div className="text-center">
