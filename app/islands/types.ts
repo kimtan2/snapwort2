@@ -41,3 +41,20 @@ export type Island = {
 };
 
 export type IslandsData = Record<string, Island>;
+
+// New type for attempt tracking
+export type Attempt = {
+  id: string;
+  questionId: number;
+  subtopicId: string;
+  islandId: string;
+  userId: string;
+  userAnswer: string;
+  score: number;
+  feedback: string;
+  improvedAnswer: string;
+  strengths: string[];
+  improvements: string[];
+  isTextInput: boolean;
+  timestamp: Date;
+};

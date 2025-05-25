@@ -1,11 +1,23 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target } from 'lucide-react';
+import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target, Edit, Send, History } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
 import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem, SerializedSavedVocabularyItem } from './types';
 import { db } from '../../lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, Timestamp, onSnapshot } from 'firebase/firestore';
+
+interface Attempt {
+  id: string;
+  userAnswer: string;
+  score: number;
+  feedback: string;
+  improvedAnswer: string;
+  strengths: string[];
+  improvements: string[];
+  isTextInput: boolean;
+  timestamp: Date;
+}
 
 export function LanguageIslandsApp() {
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
@@ -26,6 +38,21 @@ export function LanguageIslandsApp() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // New states for text input functionality
+  const [isTextInputMode, setIsTextInputMode] = useState(false);
+  const [textAnswer, setTextAnswer] = useState('');
+  const [isSubmittingText, setIsSubmittingText] = useState(false);
+  const [textFeedback, setTextFeedback] = useState<{
+    score: number;
+    feedback: string;
+    improvedAnswer: string;
+    strengths: string[];
+    improvements: string[];
+  } | null>(null);
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [showAttempts, setShowAttempts] = useState(false);
+  const [isLoadingAttempts, setIsLoadingAttempts] = useState(false);
 
   // State for vocabulary management
   const [expandedVocabSections, setExpandedVocabSections] = useState<Record<string, boolean>>({});
@@ -83,8 +110,109 @@ export function LanguageIslandsApp() {
     return () => unsubscribe();
   }, [userId]);
 
-  // We no longer need to save to localStorage as Firestore handles persistence
-  // The togglePersonalWortschatz function will handle saving to Firestore directly
+  // Load attempts when question changes
+  useEffect(() => {
+    if (selectedQuestion && selectedSubtopic && selectedIsland) {
+      loadAttempts();
+    }
+  }, [selectedQuestion, selectedSubtopic, selectedIsland]);
+
+  const loadAttempts = async () => {
+    if (!selectedQuestion || !selectedSubtopic || !selectedIsland) return;
+    
+    setIsLoadingAttempts(true);
+    
+    try {
+      const response = await fetch(`/api/islands/save-attempt?questionId=${selectedQuestion.id}&subtopicId=${selectedSubtopic.id}&islandId=${selectedIsland.id}&userId=${userId}`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setAttempts(data.attempts);
+      } else {
+        console.error('Failed to load attempts:', data.error);
+      }
+    } catch (error) {
+      console.error('Error loading attempts:', error);
+    } finally {
+      setIsLoadingAttempts(false);
+    }
+  };
+
+  const saveAttempt = async (attempt: Omit<Attempt, 'id' | 'timestamp'>) => {
+    if (!selectedQuestion || !selectedSubtopic || !selectedIsland) return;
+    
+    try {
+      const response = await fetch('/api/islands/save-attempt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          questionId: selectedQuestion.id,
+          subtopicId: selectedSubtopic.id,
+          islandId: selectedIsland.id,
+          userId: userId,
+          ...attempt
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        // Reload attempts to show the new one
+        await loadAttempts();
+      } else {
+        console.error('Failed to save attempt:', data.error);
+      }
+    } catch (error) {
+      console.error('Error saving attempt:', error);
+    }
+  };
+
+  const handleTextSubmit = async () => {
+    if (!textAnswer.trim() || !selectedQuestion || !selectedSubtopic) return;
+    
+    setIsSubmittingText(true);
+    
+    try {
+      const response = await fetch('/api/islands/check-answer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          answer: textAnswer,
+          question: selectedQuestion.question,
+          hints: selectedQuestion.hints,
+          vocabulary: selectedQuestion.vocabulary || [],
+          language: 'en' // Assuming English for now
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setTextFeedback(data);
+        
+        // Save the attempt
+        await saveAttempt({
+          userAnswer: textAnswer,
+          score: data.score,
+          feedback: data.feedback,
+          improvedAnswer: data.improvedAnswer,
+          strengths: data.strengths,
+          improvements: data.improvements,
+          isTextInput: true
+        });
+      } else {
+        console.error('Failed to check answer:', data.error);
+      }
+    } catch (error) {
+      console.error('Error checking answer:', error);
+    } finally {
+      setIsSubmittingText(false);
+    }
+  };
 
   const toggleVocabSection = (section: string) => {
     setExpandedVocabSections(prev => ({
@@ -99,71 +227,35 @@ export function LanguageIslandsApp() {
     ) || false;
   };
 
-  // Fixed version of the togglePersonalWortschatz function
-const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
-  setPersonalWortschatz(prev => {
-    const currentItems = prev[subtopicId] || [];
-    const existingIndex = currentItems.findIndex(vocab => 
-      vocab.text === item.text && vocab.meaning === item.meaning
-    );
+  const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
+    setPersonalWortschatz(prev => {
+      const currentItems = prev[subtopicId] || [];
+      const existingIndex = currentItems.findIndex(vocab => 
+        vocab.text === item.text && vocab.meaning === item.meaning
+      );
 
-    let updatedItems: SavedVocabularyItem[];
-    
-    if (existingIndex >= 0) {
-      // Remove from personal Wortschatz - create new array without the item
-      updatedItems = currentItems.filter((_, index) => index !== existingIndex);
-    } else {
-      // Add to personal Wortschatz - create new array with the item
-      const newItem: SavedVocabularyItem = {
-        ...item,
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
-        dateAdded: new Date(),
-        subtopicId: subtopicId
-      };
-      updatedItems = [...currentItems, newItem];
-    }
-
-    return {
-      ...prev,
-      [subtopicId]: updatedItems
-    };
-  });
-};
-
-// Alternative version with additional safety check
-const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) => {
-  setPersonalWortschatz(prev => {
-    const currentItems = prev[subtopicId] || [];
-    
-    // Check if item already exists (more thorough check)
-    const existingItem = currentItems.find(vocab => 
-      vocab.text === item.text && 
-      vocab.meaning === item.meaning &&
-      vocab.type === item.type
-    );
-
-    if (existingItem) {
-      // Remove from personal Wortschatz
-      return {
-        ...prev,
-        [subtopicId]: currentItems.filter(vocab => vocab.id !== existingItem.id)
-      };
-    } else {
-      // Add to personal Wortschatz
-      const newItem: SavedVocabularyItem = {
-        ...item,
-        id: `${subtopicId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        dateAdded: new Date(),
-        subtopicId: subtopicId
-      };
+      let updatedItems: SavedVocabularyItem[];
       
+      if (existingIndex >= 0) {
+        // Remove from personal Wortschatz - create new array without the item
+        updatedItems = currentItems.filter((_, index) => index !== existingIndex);
+      } else {
+        // Add to personal Wortschatz - create new array with the item
+        const newItem: SavedVocabularyItem = {
+          ...item,
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          dateAdded: new Date(),
+          subtopicId: subtopicId
+        };
+        updatedItems = [...currentItems, newItem];
+      }
+
       return {
         ...prev,
-        [subtopicId]: [...currentItems, newItem]
+        [subtopicId]: updatedItems
       };
-    }
-  });
-};
+    });
+  };
 
   const toggleSubtopicWortschatz = (subtopicId: string) => {
     setShowPersonalWortschatz(prev => ({
@@ -186,6 +278,13 @@ const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) 
     )?.subtopics[subtopicId] || null;
     setSelectedSubtopic(subtopic);
     setActiveSubtopicId(subtopicId);
+    
+    // Reset states when selecting a new question
+    setTextAnswer('');
+    setTextFeedback(null);
+    setIsTextInputMode(false);
+    setAttempts([]);
+    setShowAttempts(false);
   };
 
   const renderIslandMap = () => {
@@ -299,6 +398,12 @@ const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) 
     setFeedback(null);
     setShowFeedback(false);
   };
+
+  const resetTextInput = () => {
+    setTextAnswer('');
+    setTextFeedback(null);
+    setIsTextInputMode(false);
+  };
   
   const generateFeedback = () => {
     setFeedback({
@@ -320,11 +425,17 @@ const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) 
     setSelectedQuestion(null);
     setSelectedSubtopic(null);
     resetRecording();
+    resetTextInput();
+    setAttempts([]);
+    setShowAttempts(false);
   };
 
   const closeQuestionModal = () => {
     setSelectedQuestion(null);
     resetRecording();
+    resetTextInput();
+    setAttempts([]);
+    setShowAttempts(false);
   };
 
   return (
@@ -536,7 +647,7 @@ const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) 
           </div>
         )}
         
-{/* Question Modal */}
+        {/* Question Modal */}
         {selectedQuestion && selectedSubtopic && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -734,115 +845,335 @@ const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) 
                   </div>
                 </div>
                 
-                {/* Recording Section */}
+                {/* Recording and Text Input Section */}
                 <div className="border-t pt-8">
                   <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
                     <h4 className="font-bold text-gray-800 mb-4 flex items-center text-xl">
                       <Mic className="w-6 h-6 mr-2 text-purple-600" />
-                      Record Your Answer
+                      Practice Your Answer
                     </h4>
                     
-                    <div className="flex items-center justify-center space-x-6 mb-8">
-                      {!isRecording && !recordedAudio && (
-                        <button
-                          onClick={startRecording}
-                          className="flex items-center justify-center bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
-                        >
-                          <Mic size={32} />
-                        </button>
-                      )}
-                      
-                      {isRecording && (
-                        <button
-                          onClick={stopRecording}
-                          className="flex items-center justify-center bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-full w-20 h-20 shadow-xl animate-pulse"
-                        >
-                          <Square size={32} />
-                        </button>
-                      )}
-                      
-                      {recordedAudio && !isRecording && (
-                        <>
+                    {/* Input Mode Toggle */}
+                    <div className="flex items-center justify-center space-x-4 mb-6">
+                      <button
+                        onClick={() => setIsTextInputMode(false)}
+                        className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+                          !isTextInputMode 
+                            ? 'bg-purple-600 text-white shadow-md' 
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Mic className="w-4 h-4 mr-2" />
+                        Record Audio
+                      </button>
+                      <button
+                        onClick={() => setIsTextInputMode(true)}
+                        className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+                          isTextInputMode 
+                            ? 'bg-purple-600 text-white shadow-md' 
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Type Answer
+                      </button>
+                    </div>
+
+                    {/* Text Input Mode */}
+                    {isTextInputMode ? (
+                      <div className="space-y-4">
+                        <textarea
+                          value={textAnswer}
+                          onChange={(e) => setTextAnswer(e.target.value)}
+                          placeholder="Type your answer here..."
+                          className="w-full p-4 border border-gray-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 min-h-[120px] resize-none"
+                          disabled={isSubmittingText}
+                        />
+                        
+                        <div className="flex items-center justify-center space-x-4">
                           <button
-                            onClick={playRecording}
-                            className="flex items-center justify-center bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                            onClick={resetTextInput}
+                            className="flex items-center justify-center bg-gray-500 hover:bg-gray-600 text-white rounded-full px-6 py-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
                           >
-                            <Play size={32} />
+                            <X className="w-5 h-5 mr-2" />
+                            Clear
                           </button>
                           
                           <button
-                            onClick={resetRecording}
-                            className="flex items-center justify-center bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                            onClick={handleTextSubmit}
+                            disabled={!textAnswer.trim() || isSubmittingText}
+                            className={`flex items-center justify-center rounded-full px-6 py-3 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 ${
+                              !textAnswer.trim() || isSubmittingText
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white'
+                            }`}
                           >
-                            <RotateCcw size={32} />
+                            {isSubmittingText ? (
+                              <>
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                Checking...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-5 h-5 mr-2" />
+                                Submit Answer
+                              </>
+                            )}
                           </button>
-                        </>
-                      )}
-                    </div>
-
-                    {isRecording && (
-                      <div className="text-center mb-6">
-                        <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full inline-flex items-center">
-                          <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-                          Recording in progress...
                         </div>
-                      </div>
-                    )}
-                    
-                    {recordedAudio && !showFeedback && (
-                      <div className="text-center">
-                        <button
-                          onClick={() => setShowFeedback(true)}
-                          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl shadow-lg font-semibold transform hover:scale-105 transition-all duration-200"
-                        >
-                          Get AI Feedback
-                        </button>
-                      </div>
-                    )}
-                    
-                    {feedback && showFeedback && (
-                      <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
-                        <h4 className="font-bold text-gray-800 mb-6 flex items-center text-xl">
-                          <MessageCircle size={24} className="mr-2 text-blue-600" />
-                          AI Feedback Report
-                        </h4>
-                        
-                        <div className="grid grid-cols-2 gap-6 mb-8">
-                          {[
-                            { label: 'Fluency', value: feedback.fluency, color: 'from-green-400 to-green-600' },
-                            { label: 'Pronunciation', value: feedback.pronunciation, color: 'from-blue-400 to-blue-600' },
-                            { label: 'Vocabulary', value: feedback.vocabulary, color: 'from-purple-400 to-purple-600' },
-                            { label: 'Grammar', value: feedback.grammar, color: 'from-yellow-400 to-yellow-600' }
-                          ].map((metric) => (
-                            <div key={metric.label} className="text-center">
-                              <div className="text-sm font-medium text-gray-600 mb-2">{metric.label}</div>
-                              <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden mb-2">
+
+                        {/* Text Feedback Display */}
+                        {textFeedback && (
+                          <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
+                            <h4 className="font-bold text-gray-800 mb-4 flex items-center text-xl">
+                              <MessageCircle size={24} className="mr-2 text-blue-600" />
+                              AI Feedback Report
+                            </h4>
+                            
+                            <div className="mb-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-gray-700">Overall Score</span>
+                                <span className="text-2xl font-bold text-blue-600">{textFeedback.score}/100</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
                                 <div 
-                                  className={`h-full bg-gradient-to-r ${metric.color} rounded-full transition-all duration-1000 ease-out`}
-                                  style={{ width: `${metric.value}%` }}
+                                  className="bg-gradient-to-r from-blue-400 to-blue-600 h-3 rounded-full transition-all duration-1000 ease-out"
+                                  style={{ width: `${textFeedback.score}%` }}
                                 ></div>
                               </div>
-                              <div className="text-lg font-bold text-gray-800">{metric.value}%</div>
                             </div>
-                          ))}
+                            
+                            <div className="space-y-4">
+                              <div className="bg-blue-50 p-4 rounded-xl">
+                                <h5 className="font-semibold text-blue-800 mb-2">Feedback</h5>
+                                <p className="text-blue-700">{textFeedback.feedback}</p>
+                              </div>
+                              
+                              {textFeedback.improvedAnswer && (
+                                <div className="bg-green-50 p-4 rounded-xl">
+                                  <h5 className="font-semibold text-green-800 mb-2">Improved Answer</h5>
+                                  <p className="text-green-700 italic">{textFeedback.improvedAnswer}</p>
+                                </div>
+                              )}
+                              
+                              {textFeedback.strengths && textFeedback.strengths.length > 0 && (
+                                <div className="bg-emerald-50 p-4 rounded-xl">
+                                  <h5 className="font-semibold text-emerald-800 mb-2 flex items-center">
+                                    <Check className="w-5 h-5 mr-2" />
+                                    Strengths
+                                  </h5>
+                                  <ul className="space-y-1">
+                                    {textFeedback.strengths.map((strength, index) => (
+                                      <li key={index} className="flex items-start text-emerald-700">
+                                        <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                        <span>{strength}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {textFeedback.improvements && textFeedback.improvements.length > 0 && (
+                                <div className="bg-orange-50 p-4 rounded-xl">
+                                  <h5 className="font-semibold text-orange-800 mb-2 flex items-center">
+                                    <Target className="w-5 h-5 mr-2" />
+                                    Areas for Improvement
+                                  </h5>
+                                  <ul className="space-y-1">
+                                    {textFeedback.improvements.map((improvement, index) => (
+                                      <li key={index} className="flex items-start text-orange-700">
+                                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                        <span>{improvement}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Audio Recording Mode */
+                      <div>
+                        <div className="flex items-center justify-center space-x-6 mb-8">
+                          {!isRecording && !recordedAudio && (
+                            <button
+                              onClick={startRecording}
+                              className="flex items-center justify-center bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                            >
+                              <Mic size={32} />
+                            </button>
+                          )}
+                          
+                          {isRecording && (
+                            <button
+                              onClick={stopRecording}
+                              className="flex items-center justify-center bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-full w-20 h-20 shadow-xl animate-pulse"
+                            >
+                              <Square size={32} />
+                            </button>
+                          )}
+                          
+                          {recordedAudio && !isRecording && (
+                            <>
+                              <button
+                                onClick={playRecording}
+                                className="flex items-center justify-center bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                              >
+                                <Play size={32} />
+                              </button>
+                              
+                              <button
+                                onClick={resetRecording}
+                                className="flex items-center justify-center bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                              >
+                                <RotateCcw size={32} />
+                              </button>
+                            </>
+                          )}
                         </div>
+
+                        {isRecording && (
+                          <div className="text-center mb-6">
+                            <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full inline-flex items-center">
+                              <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+                              Recording in progress...
+                            </div>
+                          </div>
+                        )}
                         
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl">
-                          <h5 className="font-semibold text-gray-800 mb-3 flex items-center">
-                            <Star className="w-5 h-5 mr-2 text-yellow-500" />
-                            Detailed Comments
-                          </h5>
-                          <ul className="space-y-3">
-                            {feedback.feedback.map((comment, index) => (
-                              <li key={index} className="flex items-start">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                                <span className="text-gray-700">{comment}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        {recordedAudio && !showFeedback && (
+                          <div className="text-center">
+                            <button
+                              onClick={() => setShowFeedback(true)}
+                              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl shadow-lg font-semibold transform hover:scale-105 transition-all duration-200"
+                            >
+                              Get AI Feedback
+                            </button>
+                          </div>
+                        )}
+                        
+                        {feedback && showFeedback && (
+                          <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
+                            <h4 className="font-bold text-gray-800 mb-6 flex items-center text-xl">
+                              <MessageCircle size={24} className="mr-2 text-blue-600" />
+                              AI Feedback Report
+                            </h4>
+                            
+                            <div className="grid grid-cols-2 gap-6 mb-8">
+                              {[
+                                { label: 'Fluency', value: feedback.fluency, color: 'from-green-400 to-green-600' },
+                                { label: 'Pronunciation', value: feedback.pronunciation, color: 'from-blue-400 to-blue-600' },
+                                { label: 'Vocabulary', value: feedback.vocabulary, color: 'from-purple-400 to-purple-600' },
+                                { label: 'Grammar', value: feedback.grammar, color: 'from-yellow-400 to-yellow-600' }
+                              ].map((metric) => (
+                                <div key={metric.label} className="text-center">
+                                  <div className="text-sm font-medium text-gray-600 mb-2">{metric.label}</div>
+                                  <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden mb-2">
+                                    <div 
+                                      className={`h-full bg-gradient-to-r ${metric.color} rounded-full transition-all duration-1000 ease-out`}
+                                      style={{ width: `${metric.value}%` }}
+                                    ></div>
+                                  </div>
+                                  <div className="text-lg font-bold text-gray-800">{metric.value}%</div>
+                                </div>
+                              ))}
+                            </div>
+                            
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl">
+                              <h5 className="font-semibold text-gray-800 mb-3 flex items-center">
+                                <Star className="w-5 h-5 mr-2 text-yellow-500" />
+                                Detailed Comments
+                              </h5>
+                              <ul className="space-y-3">
+                                {feedback.feedback.map((comment, index) => (
+                                  <li key={index} className="flex items-start">
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                    <span className="text-gray-700">{comment}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {/* Attempts History Section */}
+                    <div className="mt-8 border-t border-purple-200 pt-6">
+                      <button
+                        onClick={() => setShowAttempts(!showAttempts)}
+                        className="flex items-center justify-between w-full p-4 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
+                      >
+                        <div className="flex items-center">
+                          <History className="w-5 h-5 mr-2 text-purple-600" />
+                          <span className="font-medium text-gray-800">My Attempts</span>
+                          {attempts.length > 0 && (
+                            <span className="ml-2 bg-purple-100 text-purple-600 text-xs px-2 py-1 rounded-full">
+                              {attempts.length}
+                            </span>
+                          )}
+                        </div>
+                        <ChevronDown 
+                          className={`w-5 h-5 text-gray-400 transition-transform ${showAttempts ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+
+                      {showAttempts && (
+                        <div className="mt-4 space-y-4 max-h-96 overflow-y-auto">
+                          {isLoadingAttempts ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                              Loading attempts...
+                            </div>
+                          ) : attempts.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <History className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                              <p>No attempts yet. Try answering the question above!</p>
+                            </div>
+                          ) : (
+                            attempts.map((attempt) => (
+                              <div key={attempt.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex items-center space-x-2">
+                                    <div className={`w-2 h-2 rounded-full ${attempt.score >= 80 ? 'bg-green-400' : attempt.score >= 60 ? 'bg-yellow-400' : 'bg-red-400'}`}></div>
+                                    <span className="text-sm font-medium text-gray-600">
+                                      {attempt.isTextInput ? 'Text Answer' : 'Audio Recording'}
+                                    </span>
+                                    <span className="text-sm text-gray-400">
+                                      {new Date(attempt.timestamp).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm font-semibold text-gray-800">
+                                    Score: {attempt.score}/100
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-3">
+                                  <div>
+                                    <h6 className="text-sm font-medium text-gray-700 mb-1">Your Answer:</h6>
+                                    <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">{attempt.userAnswer}</p>
+                                  </div>
+                                  
+                                  {attempt.improvedAnswer && (
+                                    <div>
+                                      <h6 className="text-sm font-medium text-green-700 mb-1">Improved Version:</h6>
+                                      <p className="text-sm text-green-600 bg-green-50 p-2 rounded italic">{attempt.improvedAnswer}</p>
+                                    </div>
+                                  )}
+                                  
+                                  <div>
+                                    <h6 className="text-sm font-medium text-gray-700 mb-1">Feedback:</h6>
+                                    <p className="text-sm text-gray-600">{attempt.feedback}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

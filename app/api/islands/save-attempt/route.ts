@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, query, where, orderBy, getDocs, addDoc, Timestamp } from 'firebase/firestore';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -81,6 +81,70 @@ export async function GET(request: Request) {
     console.error('Error fetching attempts:', error);
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : 'Failed to fetch attempts'
+    }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    if (!db) {
+      return NextResponse.json({ 
+        error: 'Firebase is not configured properly'
+      }, { status: 500 });
+    }
+
+    const body = await request.json();
+    const {
+      questionId,
+      subtopicId,
+      islandId,
+      userId = 'anonymous',
+      userAnswer,
+      score,
+      feedback,
+      improvedAnswer,
+      strengths = [],
+      improvements = [],
+      isTextInput = true
+    } = body;
+
+    // Validate required fields
+    if (!questionId || !subtopicId || !islandId || !userAnswer) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: questionId, subtopicId, islandId, userAnswer'
+      }, { status: 400 });
+    }
+
+    // Create the attempt document
+    const attemptData = {
+      questionId: parseInt(questionId),
+      subtopicId,
+      islandId,
+      userId,
+      userAnswer,
+      score: score || 0,
+      feedback: feedback || '',
+      improvedAnswer: improvedAnswer || '',
+      strengths: Array.isArray(strengths) ? strengths : [],
+      improvements: Array.isArray(improvements) ? improvements : [],
+      isTextInput: Boolean(isTextInput),
+      createdAt: Timestamp.now()
+    };
+
+    // Add the attempt to Firestore
+    const attemptsRef = collection(db, 'attempts');
+    const docRef = await addDoc(attemptsRef, attemptData);
+
+    return NextResponse.json({ 
+      success: true,
+      attemptId: docRef.id,
+      message: 'Attempt saved successfully'
+    });
+
+  } catch (error) {
+    console.error('Error saving attempt:', error);
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to save attempt'
     }, { status: 500 });
   }
 }
