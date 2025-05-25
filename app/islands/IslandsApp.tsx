@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Mic, MicOff, Volume2, Star, Trophy, X, MessageCircle, BookOpen } from 'lucide-react';
+import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2 } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
-import { Island, Subtopic, Question } from './types';
-import { cn } from '@/lib/utils';
+import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem, SerializedSavedVocabularyItem } from './types';
+
 
 export function LanguageIslandsApp() {
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
@@ -26,18 +26,123 @@ export function LanguageIslandsApp() {
   const audioChunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // State for vocabulary management
+  const [expandedVocabSections, setExpandedVocabSections] = useState<Record<string, boolean>>({});
+  const [personalWortschatz, setPersonalWortschatz] = useState<Record<string, SavedVocabularyItem[]>>({});
+  const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
+  const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<boolean>(false);
+
+  // Load saved vocabulary from local storage on component mount
+  useEffect(() => {
+    const saved = localStorage.getItem('personalWortschatz');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Convert serialized vocabulary items back to SavedVocabularyItem format
+        const withDates = Object.entries(parsed).reduce<Record<string, SavedVocabularyItem[]>>((acc, [key, items]) => {
+          const serializedItems = items as SerializedSavedVocabularyItem[];
+          acc[key] = serializedItems.map(item => ({
+            ...item,
+            dateAdded: new Date(item.dateAdded)
+          }));
+          return acc;
+        }, {});
+        setPersonalWortschatz(withDates);
+      } catch (error) {
+        console.error('Failed to load vocabulary:', error);
+      }
+    }
+  }, []);
+
+  // Save vocabulary to local storage whenever it changes
+  useEffect(() => {
+    try {
+      // Convert SavedVocabularyItem to serialized format for storage
+      const toSave = Object.entries(personalWortschatz).reduce<Record<string, SerializedSavedVocabularyItem[]>>(
+        (acc, [key, items]) => {
+          acc[key] = items.map(item => ({
+            ...item,
+            dateAdded: item.dateAdded.toISOString()
+          }));
+          return acc;
+        }, 
+        {}
+      );
+      
+      localStorage.setItem('personalWortschatz', JSON.stringify(toSave));
+    } catch (error) {
+      console.error('Failed to save vocabulary:', error);
+    }
+  }, [personalWortschatz]);
+
+  const toggleVocabSection = (section: string) => {
+    setExpandedVocabSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  const isInPersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
+    return personalWortschatz[subtopicId]?.some(vocab => 
+      vocab.text === item.text && vocab.meaning === item.meaning
+    ) || false;
+  };
+
+  // Toggle personal Wortschatz for a vocabulary item
+  const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
+    setPersonalWortschatz(prev => {
+      const currentItems = [...(prev[subtopicId] || [])];
+      const existingIndex = currentItems.findIndex(vocab => 
+        vocab.text === item.text && vocab.meaning === item.meaning
+      );
+
+      // Create a new array to avoid mutating the state directly
+      const updatedItems = [...currentItems];
+      
+      if (existingIndex >= 0) {
+        // Remove from personal Wortschatz
+        updatedItems.splice(existingIndex, 1);
+      } else {
+        // Add to personal Wortschatz
+        const newItem: SavedVocabularyItem = {
+          ...item,
+          id: Date.now().toString(),
+          dateAdded: new Date(),
+          subtopicId: subtopicId
+        };
+        updatedItems.push(newItem);
+      }
+
+      return {
+        ...prev,
+        [subtopicId]: updatedItems
+      };
+    });
+  };
+
+  const toggleSubtopicWortschatz = (subtopicId: string) => {
+    setExpandedVocabSections(prev => ({
+      ...prev,
+      [subtopicId]: !prev[subtopicId]
+    }));
+    setActiveSubtopicId(prev => prev === subtopicId ? null : subtopicId);
+  };
+
   const toggleSubtopic = (subtopicId: string) => {
     setExpandedSubtopics(prev => ({
       ...prev,
       [subtopicId]: !prev[subtopicId]
     }));
+    setActiveSubtopicId(prev => prev === subtopicId ? null : subtopicId);
   };
 
   const selectQuestion = (question: Question, subtopicId: string) => {
     setSelectedQuestion(question);
-    setSelectedSubtopic(Object.values(ISLANDS_DATA).find(island => 
-      Object.values(island.subtopics).some(subtopic => subtopic.id === subtopicId)
-    )?.subtopics[subtopicId] || null);
+    const subtopic = Object.values(ISLANDS_DATA).find(island => 
+      Object.values(island.subtopics).some(st => st.id === subtopicId)
+    )?.subtopics[subtopicId] || null;
+    setSelectedSubtopic(subtopic);
+    setActiveSubtopicId(subtopicId);
   };
 
   const renderIslandMap = () => {
@@ -148,8 +253,7 @@ export function LanguageIslandsApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center"> Islands</h1>
-        
+        <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Islands</h1>
         
         {renderIslandMap()}
         
@@ -185,9 +289,21 @@ export function LanguageIslandsApp() {
                         className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 hover:bg-gray-100"
                         onClick={() => toggleSubtopic(subtopic.id)}
                       >
-                        <div className="flex items-center">
-                          <span className="text-xl mr-3">{subtopic.icon}</span>
-                          <span className="font-medium">{subtopic.name}</span>
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center">
+                            <span className="text-xl mr-3">{subtopic.icon}</span>
+                            <span className="font-medium">{subtopic.name}</span>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSubtopicWortschatz(subtopic.id);
+                            }}
+                            className={`p-1 rounded-full ${activeSubtopicId === subtopic.id ? 'bg-indigo-100 text-indigo-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                            title="View Wortschatz"
+                          >
+                            <BookOpen size={20} />
+                          </button>
                         </div>
                         <ChevronRight 
                           className={`transform transition-transform ${expandedSubtopics[subtopic.id] ? 'rotate-90' : ''}`} 
@@ -196,19 +312,67 @@ export function LanguageIslandsApp() {
                       </div>
                       
                       {expandedSubtopics[subtopic.id] && (
-                        <div className="p-4 border-t">
-                          <div className="space-y-2">
+                        <div className="border-t">
+                          <div className="p-4 space-y-2">
                             {subtopic.questions.map((q) => (
                               <div 
                                 key={`${selectedIsland.id}-${subtopic.id}-${q.id}`}
                                 className="p-3 rounded-lg border hover:bg-blue-50 cursor-pointer"
                                 onClick={() => selectQuestion(q, subtopic.id)}
                               >
-                                <div className="font-medium text-blue-700">{q.title}</div>
-                                <div className="text-sm text-gray-600 mt-1">{q.question}</div>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="font-medium text-blue-700">{q.title}</div>
+                                    <div className="text-sm text-gray-600 mt-1">{q.question}</div>
+                                  </div>
+                                  {q.vocabulary && q.vocabulary.length > 0 && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleSubtopicWortschatz(subtopic.id);
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-indigo-500"
+                                      title="View Vocabulary"
+                                    >
+                                      <BookOpen size={18} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
+                          
+                          {/* Subtopic Wortschatz Panel */}
+                          {activeSubtopicId === subtopic.id && (
+                            <div className="border-t bg-gray-50 p-4">
+                              <h4 className="font-medium text-gray-800 mb-3 flex items-center">
+                                <BookOpen size={18} className="mr-2" />
+                                {subtopic.name} - Wortschatz
+                              </h4>
+                              {personalWortschatz[subtopic.id]?.length > 0 ? (
+                                <div className="space-y-2">
+                                  {personalWortschatz[subtopic.id].map((item) => (
+                                    <div key={item.id} className="bg-white p-3 rounded border border-gray-100">
+                                      <div className="font-medium">{item.text}</div>
+                                      <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
+                                      <div className="flex items-center mt-1">
+                                        <span className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">
+                                          {item.type}
+                                        </span>
+                                        <span className="ml-2 text-xs text-gray-500">
+                                          {new Date(item.dateAdded).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-500">
+                                  No vocabulary added yet. Click the + icon to add words.
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -245,16 +409,134 @@ export function LanguageIslandsApp() {
                 <div className="mb-6">
                   <div className="text-lg text-gray-800 mb-4">{selectedQuestion.question}</div>
                   
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h4 className="font-medium text-yellow-800 mb-2 flex items-center">
-                      <BookOpen size={18} className="mr-2" />
-                      Hints
-                    </h4>
-                    <ul className="list-disc pl-5 space-y-1">
-                      {selectedQuestion.hints.map((hint, index) => (
-                        <li key={index} className="text-gray-700">{hint}</li>
-                      ))}
-                    </ul>
+                  <div className="space-y-4">
+                    {/* Hints Section */}
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <h4 className="font-medium text-yellow-800 mb-2 flex items-center">
+                        <BookOpen size={18} className="mr-2" />
+                        Hints
+                      </h4>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {selectedQuestion.hints.map((hint, index) => (
+                          <li key={index} className="text-gray-700">{hint}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Vocabulary Section */}
+                    {selectedQuestion.vocabulary && selectedQuestion.vocabulary.length > 0 && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        {/* Vocabulary Header */}
+                        <div 
+                          className="bg-gray-50 p-4 flex justify-between items-center cursor-pointer"
+                          onClick={() => toggleVocabSection('vocabulary')}
+                        >
+                          <div className="flex items-center">
+                            <MessageCircle size={18} className="mr-2 text-gray-700" />
+                            <span className="font-medium">VOCABULARY</span>
+                          </div>
+                          <ChevronDown 
+                            size={20} 
+                            className={`transition-transform ${expandedVocabSections['vocabulary'] ? 'transform rotate-180' : ''}`} 
+                          />
+                        </div>
+                        
+                        {/* Vocabulary Content */}
+                        {expandedVocabSections['vocabulary'] && (
+                          <div className="bg-white p-4 space-y-3">
+                            {selectedQuestion.vocabulary.map((item, index) => (
+                              <div key={index} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="font-medium text-gray-900">{item.text}</div>
+                                    <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
+                                    <span className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full mt-1">
+                                      {item.type}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePersonalWortschatz(item, selectedSubtopic?.id || '');
+                                    }}
+                                    className={`p-1 rounded-full ${isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'text-green-500' : 'text-gray-400 hover:text-blue-500'}`}
+                                    title={isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'Remove from My Wortschatz' : 'Add to My Wortschatz'}
+                                  >
+                                    {isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? <Check size={18} /> : <Plus size={18} />}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Personal Wortschatz Toggle */}
+                    <button 
+                      onClick={() => setShowPersonalWortschatz(!showPersonalWortschatz)}
+                      className="w-full text-left flex items-center justify-between p-4 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <Star size={18} className="mr-2" />
+                        <span className="font-medium">MY PERSONAL WORTSCHATZ</span>
+                      </div>
+                      <ChevronDown 
+                        size={20} 
+                        className={`transition-transform ${showPersonalWortschatz ? 'transform rotate-180' : ''}`} 
+                      />
+                    </button>
+
+                    {/* Personal Wortschatz Content */}
+                    {showPersonalWortschatz && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-white p-4 space-y-3">
+                          {Object.entries(personalWortschatz).flatMap(([, items]) => items).length > 0 ? (
+                            Object.entries(personalWortschatz).flatMap(([, items]) => 
+                              items.map((item) => (
+                                <div key={item.id} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0 group">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <div className="font-medium text-gray-900">{item.text}</div>
+                                      <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
+                                      <div className="flex items-center mt-1">
+                                        <span className="inline-block bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">
+                                          {item.type}
+                                        </span>
+                                        <span className="ml-2 text-xs text-gray-500">
+                                          {item.dateAdded.toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        setPersonalWortschatz(prev => {
+                                          const updatedSubtopicItems = [...(prev[item.subtopicId] || [])].filter(
+                                            vocab => vocab.id !== item.id
+                                          );
+                                          return {
+                                            ...prev,
+                                            [item.subtopicId]: updatedSubtopicItems
+                                          };
+                                        });
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 p-1 transition-opacity"
+                                      title="Remove from My Wortschatz"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            )
+                          ) : (
+                            <div className="text-center py-4 text-gray-500">
+                              No vocabulary added yet. Click the + icon next to vocabulary items to add them.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 

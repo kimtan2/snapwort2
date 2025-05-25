@@ -18,13 +18,31 @@ export const ISLANDS_DATA: IslandsData = {
             id: 1,
             title: "Your Daily Journey",
             question: "Describe your daily commute to work or school. What transportation do you use and why?",
-            hints: ["Mention the type of transport", "Talk about duration", "Explain your choice"]
+            hints: ["Mention the type of transport", "Talk about duration", "Explain your choice"],
+            vocabulary: [
+              { type: "phrase", text: "I usually take the...", meaning: "Common way to start describing routine transport" },
+              { type: "expression", text: "It takes about... minutes", meaning: "Describing duration" },
+              { type: "vocabulary", text: "rush hour", meaning: "Peak traffic time" },
+              { type: "vocabulary", text: "reliable/unreliable", meaning: "Can be trusted or not" },
+              { type: "phrase", text: "I prefer... because...", meaning: "Expressing preference with reason" },
+              { type: "vocabulary", text: "convenient", meaning: "Easy and suitable" },
+              { type: "expression", text: "door-to-door", meaning: "From start to end point directly" },
+              { type: "vocabulary", text: "crowded/packed", meaning: "Full of people" }
+            ]
           },
           {
             id: 2,
             title: "Commute Challenges",
             question: "What challenges do you face during your daily commute and how do you deal with them?",
-            hints: ["Describe specific problems", "Explain your solutions", "Talk about alternatives"]
+            hints: ["Describe specific problems", "Explain your solutions", "Talk about alternatives"],
+            vocabulary: [
+              { type: "vocabulary", text: "traffic jam/gridlock", meaning: "Heavy traffic that doesn't move" },
+              { type: "expression", text: "running late", meaning: "Behind schedule" },
+              { type: "phrase", text: "I have to deal with...", meaning: "Explaining problems you face" },
+              { type: "vocabulary", text: "delays", meaning: "Things taking longer than expected" },
+              { type: "phrase", text: "To avoid this, I...", meaning: "Explaining solutions" },
+              { type: "vocabulary", text: "alternative route", meaning: "Different way to go" }
+            ]
           }
         ]
       },
@@ -37,7 +55,16 @@ export const ISLANDS_DATA: IslandsData = {
             id: 3,
             title: "At the Train Station",
             question: "You're at a train station and need to buy a ticket to London. What would you say to the ticket officer?",
-            hints: ["Be polite", "Specify destination", "Ask about times and prices"]
+            hints: ["Be polite", "Specify destination", "Ask about times and prices"],
+            vocabulary: [
+              { type: "phrase", text: "I'd like a ticket to...", meaning: "Polite way to request a ticket" },
+              { type: "vocabulary", text: "single/return ticket", meaning: "One-way or round-trip" },
+              { type: "expression", text: "What time does the next train leave?", meaning: "Asking about departure times" },
+              { type: "vocabulary", text: "platform", meaning: "Where trains stop at stations" },
+              { type: "phrase", text: "How much does it cost?", meaning: "Asking about price" },
+              { type: "vocabulary", text: "off-peak/peak hours", meaning: "Cheaper/more expensive travel times" },
+              { type: "expression", text: "Is this seat taken?", meaning: "Asking if you can sit somewhere" }
+            ]
           },
           {
             id: 4,

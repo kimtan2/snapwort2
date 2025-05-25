@@ -61,7 +61,7 @@ function cleanWordForFirestore(word: Word): Record<string, unknown> {
         // Use current date as fallback
         cleanedWord.createdAt = new Date().toISOString();
       }
-    } catch (error) {
+    } catch {
       // Fallback to current date if there's any error
       cleanedWord.createdAt = new Date().toISOString();
     }

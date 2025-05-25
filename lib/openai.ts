@@ -1,20 +1,11 @@
-import OpenAI from 'openai';
-import { Groq } from 'groq-sdk';
 import { Mistral } from '@mistralai/mistralai';
 
-// Manual model selection configuration
-// Options: 'mistral-agent' (default), 'openai', 'groq'
-const DEFAULT_MODEL_PROVIDER: string = 'mistral-agent';
+// Mistral Agent ID
+const MISTRAL_AGENT_ID = "ag:7fe871ed:20250409:snapwort:7c2cd028"; // User's custom Mistral agent
+console.log('Configured Mistral Agent ID:', MISTRAL_AGENT_ID);
 
-// Initialize the OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Initialize the GROQ client
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+// Model for Mistral
+const MISTRAL_MODEL = "mistral-small-latest"; 
 
 // Initialize the Mistral client
 let mistral: Mistral;
@@ -39,24 +30,13 @@ try {
   });
 }
 
-// Model for Mistral
-const MISTRAL_MODEL = "a"; // Primary model - mistral-small-latest is the same as mistral-small-3.1
-
-// Mistral Agent ID
-const MISTRAL_AGENT_ID = "ag:7fe871ed:20250409:snapwort:7c2cd028"; // User's custom Mistral agent
-console.log('Configured Mistral Agent ID:', MISTRAL_AGENT_ID);
-
-// Determine if we should use a specific model
-const shouldUseMistralAgent = () => DEFAULT_MODEL_PROVIDER === 'mistral-agent';
-const shouldUseGroq = () => DEFAULT_MODEL_PROVIDER === 'groq';
-
 // Define message types to avoid using any
 type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-// Function to use Mistral agent instead of a model - renamed from useMistralAgent to callMistralAgent
+// Function to use Mistral agent
 async function callMistralAgent(
   messages: Array<ChatMessage>, 
   options: { temperature?: number; maxTokens?: number } = {}
@@ -150,203 +130,73 @@ export async function getFollowUp(
   });
 
   try {
-    if (shouldUseMistralAgent()) {
-      try {
-        const content = await callMistralAgent(messages, { temperature: 0.7, maxTokens: 800 });
-        return {
-          answer: content,
-          modelUsed: 'mistral-agent'
-        };
-      } catch (error) {
-        console.error('Mistral Agent Error:', error);
-        // Fall back to the next provider
-        console.log('Falling back to next provider...');
-      }
-    }
+    console.log('Sending follow-up question to Mistral Agent...');
+    const response = await callMistralAgent(messages, { temperature: 0.7 });
     
-    // Try GROQ if it's the default or if mistral-agent failed
-    const useGroq = shouldUseGroq() || shouldUseMistralAgent();
-                   
-    if (useGroq) {
-      try {
-        // Create properly typed messages for GROQ
-        const groqMessages = messages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
-        
-        const response = await groq.chat.completions.create({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: groqMessages,
-          temperature: 0.7,
-          max_tokens: 800
-        });
-
-        return {
-          answer: response.choices[0].message.content || "I couldn't generate a response. Please try again.",
-          modelUsed: 'groq'
-        };
-      } catch (error) {
-        console.error('GROQ API Error:', error);
-        // Fallback to OpenAI if GROQ fails
-        console.log('Falling back to OpenAI...');
-      }
-    }
-    
-    // Default fallback to OpenAI
-    // Manually reconstruct messages for OpenAI
-    const openAIMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
-    
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: openAIMessages,
-      temperature: 0.7,
-      max_tokens: 800
-    });
-
     return {
-      answer: response.choices[0].message.content || "I couldn't generate a response. Please try again.",
-      modelUsed: 'openai'
+      answer: response,
+      modelUsed: 'Mistral Agent'
     };
   } catch (error) {
-    console.error('All models failed:', error);
+    console.error('Error with Mistral for follow-up:', error);
     return {
-      answer: "Sorry, there was an error with all available language models. Please try again later.",
-      modelUsed: 'none'
+      answer: "I'm sorry, I couldn't process your question at this time. Please try again later.",
+      modelUsed: 'Error - No response'
     };
   }
 }
 
 export async function getLanguageAssistance(query: string, language: 'en' | 'de', queryType: 'definition' | 'check' | 'ask' = 'definition') {
-  // First request: Get the main answer
-  let answerPrompt = '';
+  console.log(`Getting ${queryType} assistance for: "${query}" in ${language}`);
   
-  // Customize the prompt based on the queryType
+  // Construct the prompt based on query type
+  let prompt = '';
   if (queryType === 'definition') {
-    answerPrompt = language === 'en' ? 
-      `Provide a precise, clear definition for: "${query}" in English. Include part of speech, meaning, usage examples, and related forms if relevant.` : 
-      `Gib eine präzise, klare Definition für: "${query}" auf Deutsch. Füge Wortart, Bedeutung, Verwendungsbeispiele und verwandte Formen an, wenn relevant.`;
-  } 
-  else if (queryType === 'check') {
-    answerPrompt = language === 'en' ? 
-      `Check this phrase or sentence for correctness and naturalness: "${query}" in English. Point out any errors, awkward phrasings, or unnatural expressions. Suggest improvements.` : 
-      `Überprüfe diesen Satz oder diese Phrase auf Korrektheit und Natürlichkeit: "${query}" auf Deutsch. Zeige Fehler, ungeschickte Formulierungen oder unnatürliche Ausdrücke auf. Schlage Verbesserungen vor.`;
-  }
-  else if (queryType === 'ask') {
-    answerPrompt = language === 'en' ? 
-      `Answer this language-related question: "${query}" in English. Provide a comprehensive explanation tailored specifically to this question.` : 
-      `Beantworte diese sprachbezogene Frage: "${query}" auf Deutsch. Gib eine umfassende Erklärung, die speziell auf diese Frage zugeschnitten ist.`;
-  }
-  else {
-    // Default fallback
-    answerPrompt = language === 'en' ? 
-      `Analyze this language query: "${query}" in English.` : 
-      `Analysiere diese Sprachanfrage: "${query}" auf Deutsch.`;
-  }
-
-  let answer = '';
-  let modelUsed = 'none';
-  
-  // Adjust system prompt based on query type
-  let systemPrompt = '';
-  
-  if (queryType === 'definition') {
-    systemPrompt = "You are a precise language assistant specialized in providing clear definitions. Format your response with markdown, focusing on the exact meaning, usage, and examples of the term.";
-  } 
-  else if (queryType === 'check') {
-    systemPrompt = "You are a language checker that identifies errors, awkward phrasings, and unnatural expressions in text. Provide specific corrections and improvements. Format your response with markdown.";
-  }
-  else if (queryType === 'ask') {
-    systemPrompt = "You are a language expert that answers specific questions about language usage, grammar, vocabulary, and linguistics. Address the exact question directly and comprehensively. Format your response with markdown.";
-  }
-  else {
-    systemPrompt = "You are a precise language assistant that can distinguish between definition requests and specific questions. For definitions, you provide clear, structured information. For specific questions, you DIRECTLY address the exact question asked, not just provide general information about the term. If asked in German response in German, if asked in English response in English.";
+    prompt = `Define the ${language === 'en' ? 'English' : 'German'} word or phrase: "${query}". `;
+    prompt += `Provide a clear definition, examples of usage, and any relevant grammatical information. `;
+    if (language === 'de') {
+      prompt += `For German words, include gender for nouns, conjugation patterns for verbs, and declension for adjectives where relevant. `;
+    }
+  } else if (queryType === 'check') {
+    prompt = `Check if this ${language === 'en' ? 'English' : 'German'} text is correct: "${query}". `;
+    prompt += `If there are errors, explain them and provide corrections. Consider grammar, spelling, word choice, and natural phrasing. `;
+  } else { // 'ask'
+    prompt = query;
   }
   
-  // Messages for the answer request
-  const answerMessages: ChatMessage[] = [
+  // Add formatting instructions
+  prompt += `Format your response using markdown for clarity. Be concise but thorough.`;
+  
+  const messages: ChatMessage[] = [
     {
-      role: "system",
-      content: systemPrompt
+      role: 'system',
+      content: `You are a helpful language tutor specializing in ${language === 'en' ? 'English' : 'German'} language. 
+      Provide educational, clear, and comprehensive answers to language questions. Format your response with markdown.`
     },
     {
-      role: "user",
-      content: answerPrompt
+      role: 'user',
+      content: prompt
     }
   ];
   
+  let answer = '';
+  let modelUsed = 'Mistral Agent';
+  
   try {
-    if (shouldUseMistralAgent()) {
-      try {
-        console.log('Attempting to use Mistral Agent for language assistance...');
-        answer = await callMistralAgent(answerMessages, { temperature: 0.5, maxTokens: 600 });
-        console.log('Mistral Agent response received successfully:', answer.substring(0, 50) + '...');
-        modelUsed = 'mistral-agent';
-      } catch (error) {
-        console.error('Mistral Agent Error for language assistance:', error);
-        if (error instanceof Error) {
-          console.error('Error details:', error.message);
-          console.error('Stack trace:', error.stack);
-        }
-        // Fall back to the next provider
-        console.log('Falling back to next provider...');
-      }
-    }
-    
-    // Try GROQ if it's the default or if mistral-agent failed and didn't provide an answer
-    const useGroq = !answer && (shouldUseGroq() || shouldUseMistralAgent());
-                              
-    if (useGroq) {
-      try {
-        // Create properly typed messages for GROQ
-        const groqMessages = answerMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
-        
-        const answerResponse = await groq.chat.completions.create({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: groqMessages,
-          temperature: 0.5,
-          max_tokens: 600
-        });
-        
-        answer = answerResponse.choices[0].message.content || 'No information found.';
-        modelUsed = 'groq';
-      } catch (error) {
-        console.error('GROQ API Error:', error);
-        console.log('Falling back to OpenAI...');
-      }
-    }
-    
-    if (!answer) {
-      // Reconstruct messages for OpenAI
-      const openAIMessages = answerMessages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-      
-      const answerResponse = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: openAIMessages,
-        temperature: 0.5,
-        max_tokens: 600
-      });
-      
-      answer = answerResponse.choices[0].message.content || 'No information found.';
-      modelUsed = 'openai';
-    }
+    console.log('Sending to Mistral Agent...');
+    answer = await callMistralAgent(messages, { temperature: 0.5 });
+    console.log('Received response from Mistral Agent');
   } catch (error) {
-    console.error('All models failed for answer:', error);
-    answer = 'Sorry, there was an error processing your request.';
+    console.error('Error with Mistral Agent:', error);
+    answer = `I'm sorry, I couldn't process your request at this time. Please try again later.`;
+    modelUsed = 'Error - No response';
   }
-
-  // Second request: Get the title and suggestions
-  const metaPrompt = `Based on this language query: "${query}" in ${language === 'en' ? 'English' : 'German'}, provide:
-  1. A concise title that represents the main word, idiom, or expression being discussed (not the question itself)
+  
+  // Generate meta information (title and follow-up suggestions)
+  const metaPrompt = `For the ${language === 'en' ? 'English' : 'German'} language query: "${query}"
+  
+  Please provide:
+  1. A short title (1-3 words) that represents the main word, phrase, or concept being discussed.
   2. Four relevant language learning follow-up questions. They should refer to the request and be related to language learning, grammar, usage, idioms, expressions, etc.
   
   Return your response as a JSON object with these fields:
@@ -369,102 +219,38 @@ export async function getLanguageAssistance(query: string, language: 'en' | 'de'
   ];
 
   try {
-    if (shouldUseMistralAgent()) {
+    try {
+      console.log('Attempting to use Mistral Agent for meta information...');
+      const metaContent = await callMistralAgent(metaMessages, { temperature: 0.4, maxTokens: 350 });
+      console.log('Mistral agent meta response received:', metaContent.substring(0, 50) + '...');
+      
+      // Extract JSON from potential markdown response
+      let jsonContent = metaContent;
+      
+      // Check if the response contains markdown code blocks with JSON
+      const jsonBlockMatch = metaContent.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        jsonContent = jsonBlockMatch[1];
+        console.log('Extracted JSON from markdown code block');
+      }
+      
       try {
-        console.log('Attempting to use Mistral Agent for meta information...');
-        const metaContent = await callMistralAgent(metaMessages, { temperature: 0.4, maxTokens: 350 });
-        console.log('Mistral agent meta response received:', metaContent.substring(0, 50) + '...');
-        
-        // Extract JSON from potential markdown response
-        let jsonContent = metaContent;
-        
-        // Check if the response contains markdown code blocks with JSON
-        const jsonBlockMatch = metaContent.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
-        if (jsonBlockMatch && jsonBlockMatch[1]) {
-          jsonContent = jsonBlockMatch[1];
-          console.log('Extracted JSON from markdown code block');
-        }
-        
-        try {
-          const metaData = JSON.parse(jsonContent);
-          title = metaData.title || extractTitleFromQuery(query);
-          suggestions = Array.isArray(metaData.suggestions) ? metaData.suggestions : generateDefaultSuggestions(query, language);
-        } catch (jsonError) {
-          console.error('Error parsing Mistral JSON:', jsonError);
-          title = extractTitleFromQuery(query);
-          suggestions = generateDefaultSuggestions(query, language);
-        }
-      } catch (error) {
-        console.error('Mistral Agent Error for meta:', error);
-        if (error instanceof Error) {
-          console.error('Error details:', error.message);
-        }
-        // Fall back to default values
+        const metaData = JSON.parse(jsonContent);
+        title = metaData.title || extractTitleFromQuery(query);
+        suggestions = Array.isArray(metaData.suggestions) ? metaData.suggestions : generateDefaultSuggestions(query, language);
+      } catch (jsonError) {
+        console.error('Error parsing Mistral JSON:', jsonError);
         title = extractTitleFromQuery(query);
         suggestions = generateDefaultSuggestions(query, language);
       }
-    } else if (shouldUseGroq()) {
-      try {
-        // Create properly typed messages for GROQ
-        const groqMessages = metaMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
-        
-        const metaResponse = await groq.chat.completions.create({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: groqMessages,
-          temperature: 0.4,
-          max_tokens: 350,
-          response_format: { type: "json_object" }
-        });
-        
-        const metaContent = metaResponse.choices[0].message.content || '{"title": "", "suggestions": []}';
-        try {
-          const metaData = JSON.parse(metaContent);
-          title = metaData.title || extractTitleFromQuery(query);
-          suggestions = metaData.suggestions || generateDefaultSuggestions(query, language);
-        } catch (jsonError) {
-          console.error('Error parsing GROQ JSON:', jsonError);
-          title = extractTitleFromQuery(query);
-          suggestions = generateDefaultSuggestions(query, language);
-        }
-      } catch (error) {
-        console.error('GROQ API Error for meta:', error);
-        title = extractTitleFromQuery(query);
-        suggestions = generateDefaultSuggestions(query, language);
+    } catch (error) {
+      console.error('Mistral Agent Error for meta:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
       }
-    } else {
-      try {
-        // Reconstruct messages for OpenAI
-        const openAIMessages = metaMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
-        
-        const metaResponse = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: openAIMessages,
-          temperature: 0.4,
-          max_tokens: 350,
-          response_format: { type: "json_object" }
-        });
-        
-        const metaContent = metaResponse.choices[0].message.content || '{"title": "", "suggestions": []}';
-        try {
-          const metaData = JSON.parse(metaContent);
-          title = metaData.title || extractTitleFromQuery(query);
-          suggestions = metaData.suggestions || generateDefaultSuggestions(query, language);
-        } catch (jsonError) {
-          console.error('Error parsing OpenAI JSON:', jsonError);
-          title = extractTitleFromQuery(query);
-          suggestions = generateDefaultSuggestions(query, language);
-        }
-      } catch (error) {
-        console.error('OpenAI API Error for meta:', error);
-        title = extractTitleFromQuery(query);
-        suggestions = generateDefaultSuggestions(query, language);
-      }
+      // Fall back to default values
+      title = extractTitleFromQuery(query);
+      suggestions = generateDefaultSuggestions(query, language);
     }
   } catch (error) {
     console.error('All models failed for meta information:', error);
@@ -522,4 +308,3 @@ function generateDefaultSuggestions(query: string, language: 'en' | 'de'): strin
     ];
   }
 }
-
