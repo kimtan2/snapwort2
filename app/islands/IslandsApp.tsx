@@ -1,30 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2 } from 'lucide-react';
+import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
 import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem, SerializedSavedVocabularyItem } from './types';
-
-// Additional interfaces for answer checking
-interface AnswerAttempt {
-  id: string;
-  userAnswer: string;
-  score: number;
-  feedback: string;
-  improvedAnswer: string;
-  strengths: string[];
-  improvements: string[];
-  timestamp: Date;
-  isTextInput: boolean; // true for text, false for audio
-}
-
-interface AnswerFeedback {
-  score: number;
-  feedback: string;
-  improvedAnswer: string;
-  strengths: string[];
-  improvements: string[];
-}
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, Timestamp, onSnapshot } from 'firebase/firestore';
 
 export function LanguageIslandsApp() {
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
@@ -50,58 +31,60 @@ export function LanguageIslandsApp() {
   const [expandedVocabSections, setExpandedVocabSections] = useState<Record<string, boolean>>({});
   const [personalWortschatz, setPersonalWortschatz] = useState<Record<string, SavedVocabularyItem[]>>({});
   const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
-  const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<boolean>(false);
+  const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<Record<string, boolean>>({});
 
-  // New state for text input and answer checking
-  const [showTextInput, setShowTextInput] = useState(false);
-  const [textAnswer, setTextAnswer] = useState('');
-  const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
-  const [answerAttempts, setAnswerAttempts] = useState<AnswerAttempt[]>([]);
-  const [showAttempts, setShowAttempts] = useState(false);
-  const [currentFeedback, setCurrentFeedback] = useState<AnswerFeedback | null>(null);
+  // User ID for Firestore - in a real app, this would come from authentication
+  const [userId, setUserId] = useState<string>('default-user');
 
-  // Load saved vocabulary from local storage on component mount
+  // Load saved vocabulary from Firestore on component mount
   useEffect(() => {
-    const saved = localStorage.getItem('personalWortschatz');
-    if (saved) {
+    if (!userId) return;
+
+    // Create a query against the vocabulary collection
+    const vocabCollection = collection(db, 'vocabulary');
+    const q = query(vocabCollection, where('userId', '==', userId));
+
+    // Set up a real-time listener
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       try {
-        const parsed = JSON.parse(saved);
-        // Convert serialized vocabulary items back to SavedVocabularyItem format
-        const withDates = Object.entries(parsed).reduce<Record<string, SavedVocabularyItem[]>>((acc, [key, items]) => {
-          const serializedItems = items as SerializedSavedVocabularyItem[];
-          acc[key] = serializedItems.map(item => ({
-            ...item,
-            dateAdded: new Date(item.dateAdded)
-          }));
-          return acc;
-        }, {});
-        setPersonalWortschatz(withDates);
+        const vocabBySubtopic: Record<string, SavedVocabularyItem[]> = {};
+        
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const subtopicId = data.subtopicId;
+          
+          if (!vocabBySubtopic[subtopicId]) {
+            vocabBySubtopic[subtopicId] = [];
+          }
+          
+          // Convert Firestore timestamp to Date
+          let dateAdded = new Date();
+          if (data.dateAdded instanceof Timestamp) {
+            dateAdded = data.dateAdded.toDate();
+          }
+          
+          vocabBySubtopic[subtopicId].push({
+            id: doc.id,
+            text: data.text,
+            meaning: data.meaning,
+            type: data.type,
+            dateAdded: dateAdded,
+            subtopicId: data.subtopicId
+          });
+        });
+        
+        setPersonalWortschatz(vocabBySubtopic);
       } catch (error) {
-        console.error('Failed to load vocabulary:', error);
+        console.error('Failed to load vocabulary from Firestore:', error);
       }
-    }
-  }, []);
+    });
+    
+    // Clean up the listener when the component unmounts
+    return () => unsubscribe();
+  }, [userId]);
 
-  // Save vocabulary to local storage whenever it changes
-  useEffect(() => {
-    try {
-      // Convert SavedVocabularyItem to serialized format for storage
-      const toSave = Object.entries(personalWortschatz).reduce<Record<string, SerializedSavedVocabularyItem[]>>(
-        (acc, [key, items]) => {
-          acc[key] = items.map(item => ({
-            ...item,
-            dateAdded: item.dateAdded.toISOString()
-          }));
-          return acc;
-        }, 
-        {}
-      );
-      
-      localStorage.setItem('personalWortschatz', JSON.stringify(toSave));
-    } catch (error) {
-      console.error('Failed to save vocabulary:', error);
-    }
-  }, [personalWortschatz]);
+  // We no longer need to save to localStorage as Firestore handles persistence
+  // The togglePersonalWortschatz function will handle saving to Firestore directly
 
   const toggleVocabSection = (section: string) => {
     setExpandedVocabSections(prev => ({
@@ -116,96 +99,77 @@ export function LanguageIslandsApp() {
     ) || false;
   };
 
-  // Toggle personal Wortschatz for a vocabulary item
-  const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
-    setPersonalWortschatz(prev => {
-      const currentItems = prev[subtopicId] || [];
-      const existingIndex = currentItems.findIndex(vocab => 
-        vocab.text === item.text && vocab.meaning === item.meaning
-      );
+  // Fixed version of the togglePersonalWortschatz function
+const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
+  setPersonalWortschatz(prev => {
+    const currentItems = prev[subtopicId] || [];
+    const existingIndex = currentItems.findIndex(vocab => 
+      vocab.text === item.text && vocab.meaning === item.meaning
+    );
 
-      let updatedItems: SavedVocabularyItem[];
-      
-      if (existingIndex >= 0) {
-        // Remove from personal Wortschatz - create new array without the item
-        updatedItems = currentItems.filter((_, index) => index !== existingIndex);
-      } else {
-        // Add to personal Wortschatz - create new array with the item
-        const newItem: SavedVocabularyItem = {
-          ...item,
-          id: `${subtopicId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          dateAdded: new Date(),
-          subtopicId: subtopicId
-        };
-        updatedItems = [...currentItems, newItem];
-      }
+    let updatedItems: SavedVocabularyItem[];
+    
+    if (existingIndex >= 0) {
+      // Remove from personal Wortschatz - create new array without the item
+      updatedItems = currentItems.filter((_, index) => index !== existingIndex);
+    } else {
+      // Add to personal Wortschatz - create new array with the item
+      const newItem: SavedVocabularyItem = {
+        ...item,
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
+        dateAdded: new Date(),
+        subtopicId: subtopicId
+      };
+      updatedItems = [...currentItems, newItem];
+    }
 
+    return {
+      ...prev,
+      [subtopicId]: updatedItems
+    };
+  });
+};
+
+// Alternative version with additional safety check
+const togglePersonalWortschatzSafe = (item: VocabularyItem, subtopicId: string) => {
+  setPersonalWortschatz(prev => {
+    const currentItems = prev[subtopicId] || [];
+    
+    // Check if item already exists (more thorough check)
+    const existingItem = currentItems.find(vocab => 
+      vocab.text === item.text && 
+      vocab.meaning === item.meaning &&
+      vocab.type === item.type
+    );
+
+    if (existingItem) {
+      // Remove from personal Wortschatz
       return {
         ...prev,
-        [subtopicId]: updatedItems
+        [subtopicId]: currentItems.filter(vocab => vocab.id !== existingItem.id)
       };
-    });
-  };
-
-  // Handle text answer submission
-  const handleTextAnswerSubmit = async () => {
-    if (!textAnswer.trim() || !selectedQuestion || !selectedSubtopic) return;
-    
-    setIsCheckingAnswer(true);
-    setCurrentFeedback(null);
-    
-    try {
-      const response = await fetch('/api/islands/check-answer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          answer: textAnswer.trim(),
-          question: selectedQuestion.question,
-          hints: selectedQuestion.hints,
-          vocabulary: selectedQuestion.vocabulary || [],
-          language: 'en' // or get from context
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to check answer');
-      }
-      
-      const feedback = await response.json();
-      setCurrentFeedback(feedback);
-      
-      // Save the attempt
-      const newAttempt: AnswerAttempt = {
-        id: `attempt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        userAnswer: textAnswer.trim(),
-        ...feedback,
-        timestamp: new Date(),
-        isTextInput: true
+    } else {
+      // Add to personal Wortschatz
+      const newItem: SavedVocabularyItem = {
+        ...item,
+        id: `${subtopicId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        dateAdded: new Date(),
+        subtopicId: subtopicId
       };
       
-      setAnswerAttempts(prev => [newAttempt, ...prev]);
-      
-      // Clear the text input
-      setTextAnswer('');
-      setShowTextInput(false);
-      
-    } catch (error) {
-      console.error('Error checking answer:', error);
-      alert(error instanceof Error ? error.message : 'Failed to check your answer');
-    } finally {
-      setIsCheckingAnswer(false);
+      return {
+        ...prev,
+        [subtopicId]: [...currentItems, newItem]
+      };
     }
-  };
+  });
+};
 
   const toggleSubtopicWortschatz = (subtopicId: string) => {
-    setExpandedVocabSections(prev => ({
+    setShowPersonalWortschatz(prev => ({
       ...prev,
       [subtopicId]: !prev[subtopicId]
     }));
-    setActiveSubtopicId(prev => prev === subtopicId ? null : subtopicId);
   };
 
   const toggleSubtopic = (subtopicId: string) => {
@@ -213,7 +177,6 @@ export function LanguageIslandsApp() {
       ...prev,
       [subtopicId]: !prev[subtopicId]
     }));
-    setActiveSubtopicId(prev => prev === subtopicId ? null : subtopicId);
   };
 
   const selectQuestion = (question: Question, subtopicId: string) => {
@@ -223,39 +186,67 @@ export function LanguageIslandsApp() {
     )?.subtopics[subtopicId] || null;
     setSelectedSubtopic(subtopic);
     setActiveSubtopicId(subtopicId);
-    
-    // Reset answer-related state when selecting a new question
-    setShowTextInput(false);
-    setTextAnswer('');
-    setCurrentFeedback(null);
-    setAnswerAttempts([]);
-    setShowAttempts(false);
-    resetRecording();
   };
 
   const renderIslandMap = () => {
     return (
-      <div className="relative w-full h-[500px] bg-blue-50 rounded-xl overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/images/map-bg.svg')] bg-cover opacity-20"></div>
+      <div className="relative w-full h-[600px] bg-gradient-to-br from-blue-100 via-indigo-50 to-purple-50 rounded-3xl overflow-hidden shadow-2xl border border-white/20">
+        {/* Animated background waves */}
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-10 left-0 w-full h-32 bg-gradient-to-r from-blue-200/40 to-cyan-200/40 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-20 right-0 w-2/3 h-24 bg-gradient-to-l from-purple-200/40 to-pink-200/40 rounded-full blur-2xl animate-pulse delay-1000"></div>
+          <div className="absolute top-1/2 left-1/4 w-1/2 h-16 bg-gradient-to-r from-green-200/40 to-teal-200/40 rounded-full blur-xl animate-pulse delay-500"></div>
+        </div>
+
+        {/* Floating decorative elements */}
+        <div className="absolute top-16 right-20 w-4 h-4 bg-yellow-400 rounded-full animate-bounce delay-300 opacity-60"></div>
+        <div className="absolute bottom-32 left-16 w-3 h-3 bg-pink-400 rounded-full animate-bounce delay-700 opacity-60"></div>
+        <div className="absolute top-1/3 right-1/4 w-2 h-2 bg-green-400 rounded-full animate-bounce delay-1000 opacity-60"></div>
         
+        {/* Islands */}
         {Object.values(ISLANDS_DATA).map((island) => (
           <div 
             key={island.id}
-            className={`absolute cursor-pointer transform transition-all duration-300 hover:scale-110`}
+            className="absolute cursor-pointer transform transition-all duration-500 hover:scale-125 hover:z-10"
             style={{ 
               left: `${island.position.x}%`, 
               top: `${island.position.y}%`,
             }}
             onClick={() => setSelectedIsland(island)}
           >
-            <div className={`w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br ${island.color} text-white text-2xl shadow-lg`}>
-              <span>{island.icon}</span>
+            {/* Island glow effect */}
+            <div className={`absolute inset-0 w-20 h-20 -translate-x-2 -translate-y-2 rounded-full bg-gradient-to-br ${island.color} opacity-20 blur-xl animate-pulse`}></div>
+            
+            {/* Main island */}
+            <div className={`relative w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br ${island.color} text-white text-2xl shadow-xl border-2 border-white/30 hover:shadow-2xl transition-all duration-300`}>
+              <span className="relative z-10">{island.icon}</span>
+              <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/10 to-transparent"></div>
             </div>
-            <div className="mt-2 text-center font-medium text-gray-800 text-sm">
-              {island.name}
+            
+            {/* Island name */}
+            <div className="mt-3 text-center">
+              <div className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-lg border border-white/40">
+                <span className="font-semibold text-gray-800 text-sm">{island.name}</span>
+              </div>
+            </div>
+
+            {/* Progress indicator */}
+            <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
+              <Award className="w-3 h-3 text-yellow-800" />
             </div>
           </div>
         ))}
+
+        {/* Decorative title */}
+        <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
+          <div className="bg-white/20 backdrop-blur-md px-6 py-3 rounded-full border border-white/30">
+            <h2 className="text-xl font-bold text-gray-700 flex items-center">
+              <Sparkles className="w-5 h-5 mr-2 text-yellow-500" />
+              Language Islands
+              <Target className="w-5 h-5 ml-2 text-blue-500" />
+            </h2>
+          </div>
+        </div>
       </div>
     );
   };
@@ -289,7 +280,6 @@ export function LanguageIslandsApp() {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       
-      // Simulate getting feedback after recording
       setTimeout(() => {
         generateFeedback();
       }, 1000);
@@ -311,9 +301,8 @@ export function LanguageIslandsApp() {
   };
   
   const generateFeedback = () => {
-    // Simulate AI feedback
     setFeedback({
-      fluency: Math.floor(Math.random() * 30) + 70, // 70-100
+      fluency: Math.floor(Math.random() * 30) + 70,
       pronunciation: Math.floor(Math.random() * 30) + 70,
       vocabulary: Math.floor(Math.random() * 30) + 70,
       grammar: Math.floor(Math.random() * 30) + 70,
@@ -336,137 +325,122 @@ export function LanguageIslandsApp() {
   const closeQuestionModal = () => {
     setSelectedQuestion(null);
     resetRecording();
-    // Reset answer-related state
-    setShowTextInput(false);
-    setTextAnswer('');
-    setCurrentFeedback(null);
-    setAnswerAttempts([]);
-    setShowAttempts(false);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">Islands</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
+            Language Islands
+          </h1>
+          <p className="text-gray-600 text-lg max-w-2xl mx-auto">
+            Explore different conversation topics and practice your speaking skills in immersive scenarios
+          </p>
+        </div>
         
         {renderIslandMap()}
         
         {/* Island Modal */}
         {selectedIsland && !selectedQuestion && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white p-6 border-b z-10">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-100">
+              {/* Header */}
+              <div className="sticky top-0 bg-white p-6 border-b border-gray-100 rounded-t-2xl z-10">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center">
-                    <div className={`w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br ${selectedIsland.color} text-white text-xl mr-4`}>
+                    <div className={`w-16 h-16 flex items-center justify-center rounded-2xl bg-gradient-to-br ${selectedIsland.color} text-white text-2xl mr-4 shadow-lg`}>
                       <span>{selectedIsland.icon}</span>
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-800">{selectedIsland.name}</h2>
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-800">{selectedIsland.name}</h2>
+                      <p className="text-gray-600 mt-1">{selectedIsland.description}</p>
+                    </div>
                   </div>
                   <button 
                     onClick={closeIslandModal}
-                    className="text-gray-500 hover:text-gray-700"
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                   >
                     <X size={24} />
                   </button>
                 </div>
-                <p className="mt-2 text-gray-600">{selectedIsland.description}</p>
               </div>
               
               <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">Topics</h3>
+                <div className="flex items-center mb-6">
+                  <h3 className="text-xl font-semibold text-gray-800 flex items-center">
+                    <Target className="w-5 h-5 mr-2 text-blue-500" />
+                    Practice Topics
+                  </h3>
+                </div>
                 
-                <div className="space-y-3">
+                <div className="grid gap-4">
                   {Object.values(selectedIsland.subtopics).map((subtopic) => (
-                    <div key={subtopic.id} className="border rounded-lg overflow-hidden">
+                    <div key={subtopic.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 bg-gradient-to-r from-white to-gray-50">
                       <div 
-                        className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 hover:bg-gray-100"
+                        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                         onClick={() => toggleSubtopic(subtopic.id)}
                       >
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center">
-                            <span className="text-xl mr-3">{subtopic.icon}</span>
-                            <span className="font-medium">{subtopic.name}</span>
+                        <div className="flex items-center">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mr-4">
+                            <span className="text-2xl">{subtopic.icon}</span>
                           </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-800 text-lg">{subtopic.name}</h4>
+                            <p className="text-gray-500 text-sm">{subtopic.questions.length} practice questions</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleSubtopicWortschatz(subtopic.id);
                             }}
-                            className={`p-1 rounded-full ${activeSubtopicId === subtopic.id ? 'bg-indigo-100 text-indigo-600' : 'text-gray-500 hover:bg-gray-100'}`}
-                            title="View Wortschatz"
+                            className="p-2 rounded-full transition-colors bg-green-100 text-green-600 hover:bg-green-200"
+                            title="View Personal Wortschatz"
                           >
                             <BookOpen size={20} />
                           </button>
+                          <ChevronRight 
+                            className={`transform transition-transform text-gray-400 ${expandedSubtopics[subtopic.id] ? 'rotate-90' : ''}`} 
+                            size={20} 
+                          />
                         </div>
-                        <ChevronRight 
-                          className={`transform transition-transform ${expandedSubtopics[subtopic.id] ? 'rotate-90' : ''}`} 
-                          size={20} 
-                        />
                       </div>
                       
                       {expandedSubtopics[subtopic.id] && (
                         <div className="border-t">
-                          <div className="p-4 space-y-2">
+                          <div className="p-4 space-y-3">
                             {subtopic.questions.map((q) => (
                               <div 
                                 key={`${selectedIsland.id}-${subtopic.id}-${q.id}`}
-                                className="p-3 rounded-lg border hover:bg-blue-50 cursor-pointer"
+                                className="group p-4 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 cursor-pointer transition-all duration-200"
                                 onClick={() => selectQuestion(q, subtopic.id)}
                               >
                                 <div className="flex justify-between items-start">
-                                  <div>
-                                    <div className="font-medium text-blue-700">{q.title}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{q.question}</div>
+                                  <div className="flex-1">
+                                    <div className="font-semibold text-blue-700 group-hover:text-blue-800 mb-2">{q.title}</div>
+                                    <div className="text-gray-600 text-sm mb-2">{q.question}</div>
                                   </div>
-                                  {q.vocabulary && q.vocabulary.length > 0 && (
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleSubtopicWortschatz(subtopic.id);
-                                      }}
-                                      className="p-1 text-gray-400 hover:text-indigo-500"
-                                      title="View Vocabulary"
-                                    >
-                                      <BookOpen size={18} />
-                                    </button>
-                                  )}
+                                  <div className="flex items-center space-x-2 ml-4">
+                                    {q.vocabulary && q.vocabulary.length > 0 && (
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleSubtopicWortschatz(subtopic.id);
+                                        }}
+                                        className="p-2 bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
+                                        title="View Vocabulary"
+                                      >
+                                        <BookOpen size={18} />
+                                      </button>
+                                    )}
+                                    <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={16} />
+                                  </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          
-                          {/* Subtopic Wortschatz Panel */}
-                          {activeSubtopicId === subtopic.id && (
-                            <div className="border-t bg-gray-50 p-4">
-                              <h4 className="font-medium text-gray-800 mb-3 flex items-center">
-                                <BookOpen size={18} className="mr-2" />
-                                {subtopic.name} - Wortschatz
-                              </h4>
-                              {personalWortschatz[subtopic.id]?.length > 0 ? (
-                                <div className="space-y-2">
-                                  {personalWortschatz[subtopic.id].map((item) => (
-                                    <div key={item.id} className="bg-white p-3 rounded border border-gray-100">
-                                      <div className="font-medium">{item.text}</div>
-                                      <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
-                                      <div className="flex items-center mt-1">
-                                        <span className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">
-                                          {item.type}
-                                        </span>
-                                        <span className="ml-2 text-xs text-gray-500">
-                                          {new Date(item.dateAdded).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center py-4 text-gray-500">
-                                  No vocabulary added yet. Click the + icon to add words.
-                                </div>
-                              )}
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
@@ -477,22 +451,124 @@ export function LanguageIslandsApp() {
           </div>
         )}
         
-        {/* Question Modal */}
-        {selectedQuestion && selectedSubtopic && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white p-6 border-b z-10">
+        {/* Personal Wortschatz Popup Modal */}
+        {selectedSubtopic && showPersonalWortschatz[selectedSubtopic.id] && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+              {/* Header */}
+              <div className="sticky top-0 bg-white p-6 border-b border-gray-100 rounded-t-2xl z-10">
                 <div className="flex justify-between items-center">
-                  <div>
-                    <div className="flex items-center">
-                      <span className="text-xl mr-3">{selectedSubtopic.icon}</span>
-                      <h3 className="text-lg font-semibold text-gray-700">{selectedSubtopic.name}</h3>
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl flex items-center justify-center mr-4">
+                      <BookOpen size={24} className="text-green-600" />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-800 mt-2">{selectedQuestion.title}</h2>
+                    <div>
+                      <h3 className="text-2xl font-bold text-gray-800">Personal Wortschatz</h3>
+                      <p className="text-gray-600">{selectedSubtopic.name}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => toggleSubtopicWortschatz(selectedSubtopic.id)}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                {personalWortschatz[selectedSubtopic.id]?.length > 0 ? (
+                  <div className="space-y-4">
+                    {personalWortschatz[selectedSubtopic.id].map((item) => (
+                      <div key={item.id} className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-100 shadow-sm">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-900 text-lg mb-1">{item.text}</div>
+                            <div className="text-gray-600 mb-3">{item.meaning}</div>
+                            <div className="flex items-center space-x-2">
+                              <span className="inline-block bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full font-medium">
+                                {item.type}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                Added: {item.dateAdded.toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                // Delete from Firestore
+                                await deleteDoc(doc(db, 'vocabulary', item.id));
+                                
+                                // Update local state (optimistic update)
+                                setPersonalWortschatz(prev => {
+                                  const updatedSubtopicItems = [...(prev[item.subtopicId] || [])].filter(
+                                    vocab => vocab.id !== item.id
+                                  );
+                                  return {
+                                    ...prev,
+                                    [item.subtopicId]: updatedSubtopicItems
+                                  };
+                                });
+                              } catch (error) {
+                                console.error('Error deleting vocabulary item:', error);
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"
+                            title="Remove from Personal Wortschatz"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h4 className="text-lg font-medium text-gray-600 mb-2">No vocabulary added yet</h4>
+                    <p>Add vocabulary from the question sections to build your personal collection.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+{/* Question Modal */}
+        {selectedQuestion && selectedSubtopic && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="sticky top-0 bg-white p-6 border-b border-gray-100 rounded-t-2xl z-10">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mr-4">
+                      <span className="text-xl">{selectedSubtopic.icon}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-700 flex items-center">
+                        {selectedSubtopic.name}
+                      </h3>
+                      <h2 className="text-2xl font-bold text-gray-800 mt-1 flex items-center justify-between">
+                        {selectedQuestion.title}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSubtopicWortschatz(selectedSubtopic.id);
+                          }}
+                          className="p-2 rounded-full transition-colors bg-green-100 text-green-600 hover:bg-green-200"
+                          title="View Personal Wortschatz"
+                        >
+                          <BookOpen size={20} />
+                        </button>
+                      </h2>
+                    </div>
                   </div>
                   <button 
                     onClick={closeQuestionModal}
-                    className="text-gray-500 hover:text-gray-700"
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                   >
                     <X size={24} />
                   </button>
@@ -501,109 +577,73 @@ export function LanguageIslandsApp() {
               
               <div className="p-6">
                 <div className="mb-6">
-                  <div className="text-lg text-gray-800 mb-4">{selectedQuestion.question}</div>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100 mb-6">
+                    <div className="text-lg text-gray-800 mb-4 font-medium">{selectedQuestion.question}</div>
+                  </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {/* Hints Section */}
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <h4 className="font-medium text-yellow-800 mb-2 flex items-center">
-                        <BookOpen size={18} className="mr-2" />
-                        Hints
-                      </h4>
-                      <ul className="list-disc pl-5 space-y-1">
-                        {selectedQuestion.hints.map((hint, index) => (
-                          <li key={index} className="text-gray-700">{hint}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Vocabulary Section */}
-                    {selectedQuestion.vocabulary && selectedQuestion.vocabulary.length > 0 && (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        {/* Vocabulary Header */}
-                        <div 
-                          className="bg-gray-50 p-4 flex justify-between items-center cursor-pointer"
-                          onClick={() => toggleVocabSection('vocabulary')}
-                        >
+                    <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl overflow-hidden">
+                      <div 
+                        className="p-5 cursor-pointer hover:bg-yellow-50 transition-colors"
+                        onClick={() => toggleVocabSection('hints')}
+                      >
+                        <h4 className="font-semibold text-yellow-800 flex items-center justify-between">
                           <div className="flex items-center">
-                            <MessageCircle size={18} className="mr-2 text-gray-700" />
-                            <span className="font-medium">VOCABULARY</span>
+                            <Sparkles size={18} className="mr-2" />
+                            Practice Hints
                           </div>
                           <ChevronDown 
                             size={20} 
-                            className={`transition-transform ${expandedVocabSections['vocabulary'] ? 'transform rotate-180' : ''}`} 
+                            className={`transition-transform text-yellow-600 ${expandedVocabSections['hints'] ? 'transform rotate-180' : ''}`} 
                           />
+                        </h4>
+                      </div>
+                      {expandedVocabSections['hints'] && (
+                        <div className="px-5 pb-5">
+                          <ul className="space-y-2">
+                            {selectedQuestion.hints.map((hint, index) => (
+                              <li key={index} className="flex items-start text-gray-700">
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                <span>{hint}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                        
-                        {/* Vocabulary Content */}
-                        {expandedVocabSections['vocabulary'] && (
-                          <div className="bg-white p-4 space-y-3">
-                            {selectedQuestion.vocabulary.map((item, index) => (
-                              <div key={index} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                      )}
+                    </div>
+
+                    {/* Personal Wortschatz for Question */}
+                    {showPersonalWortschatz[selectedSubtopic.id] && (
+                      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5">
+                        <h4 className="font-semibold text-indigo-800 mb-3 flex items-center">
+                          <Star size={18} className="mr-2" />
+                          My Personal Wortschatz
+                        </h4>
+                        {personalWortschatz[selectedSubtopic.id]?.length > 0 ? (
+                          <div className="grid gap-3">
+                            {personalWortschatz[selectedSubtopic.id].map((item) => (
+                              <div key={item.id} className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
                                 <div className="flex justify-between items-start">
-                                  <div>
+                                  <div className="flex-1">
                                     <div className="font-medium text-gray-900">{item.text}</div>
                                     <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
-                                    <span className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full mt-1">
-                                      {item.type}
-                                    </span>
+                                    <div className="flex items-center mt-2 space-x-2">
+                                      <span className="inline-block bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-full font-medium">
+                                        {item.type}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        {item.dateAdded.toLocaleDateString()}
+                                      </span>
+                                    </div>
                                   </div>
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      togglePersonalWortschatz(item, selectedSubtopic?.id || '');
-                                    }}
-                                    className={`p-1 rounded-full ${isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'text-green-500' : 'text-gray-400 hover:text-blue-500'}`}
-                                    title={isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'Remove from My Wortschatz' : 'Add to My Wortschatz'}
-                                  >
-                                    {isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? <Check size={18} /> : <Plus size={18} />}
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Personal Wortschatz Toggle */}
-                    <button 
-                      onClick={() => setShowPersonalWortschatz(!showPersonalWortschatz)}
-                      className="w-full text-left flex items-center justify-between p-4 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
-                    >
-                      <div className="flex items-center">
-                        <Star size={18} className="mr-2" />
-                        <span className="font-medium">MY PERSONAL WORTSCHATZ</span>
-                      </div>
-                      <ChevronDown 
-                        size={20} 
-                        className={`transition-transform ${showPersonalWortschatz ? 'transform rotate-180' : ''}`} 
-                      />
-                    </button>
-
-                    {/* Personal Wortschatz Content */}
-                    {showPersonalWortschatz && (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="bg-white p-4 space-y-3">
-                          {Object.entries(personalWortschatz).flatMap(([, items]) => items).length > 0 ? (
-                            Object.entries(personalWortschatz).flatMap(([, items]) => 
-                              items.map((item) => (
-                                <div key={item.id} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0 group">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <div className="font-medium text-gray-900">{item.text}</div>
-                                      <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
-                                      <div className="flex items-center mt-1">
-                                        <span className="inline-block bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">
-                                          {item.type}
-                                        </span>
-                                        <span className="ml-2 text-xs text-gray-500">
-                                          {item.dateAdded.toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <button
-                                      onClick={() => {
+                                    onClick={async () => {
+                                      try {
+                                        // Delete from Firestore
+                                        await deleteDoc(doc(db, 'vocabulary', item.id));
+                                        
+                                        // Update local state (optimistic update)
                                         setPersonalWortschatz(prev => {
                                           const updatedSubtopicItems = [...(prev[item.subtopicId] || [])].filter(
                                             vocab => vocab.id !== item.id
@@ -613,320 +653,197 @@ export function LanguageIslandsApp() {
                                             [item.subtopicId]: updatedSubtopicItems
                                           };
                                         });
-                                      }}
-                                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 p-1 transition-opacity"
-                                      title="Remove from My Wortschatz"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
+                                      } catch (error) {
+                                        console.error('Error deleting vocabulary item:', error);
+                                      }
+                                    }}
+                                    className="text-red-400 hover:text-red-600 p-1 transition-colors"
+                                    title="Remove from Personal Wortschatz"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
                                 </div>
-                              ))
-                            )
-                          ) : (
-                            <div className="text-center py-4 text-gray-500">
-                              No vocabulary added yet. Click the + icon next to vocabulary items to add them.
-                            </div>
-                          )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-indigo-600">
+                            <BookOpen className="w-12 h-12 mx-auto mb-3 text-indigo-300" />
+                            <p>No vocabulary added yet.</p>
+                            <p className="text-sm">Add vocabulary from the section below.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Vocabulary Section */}
+                    {selectedQuestion.vocabulary && selectedQuestion.vocabulary.length > 0 && (
+                      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                        {/* Vocabulary Header */}
+                        <div 
+                          className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 flex justify-between items-center cursor-pointer hover:from-gray-100 hover:to-blue-100 transition-colors"
+                          onClick={() => toggleVocabSection('vocabulary')}
+                        >
+                          <div className="flex items-center">
+                            <MessageCircle size={18} className="mr-2 text-blue-600" />
+                            <span className="font-semibold text-gray-800">VOCABULARY</span>
+                          </div>
+                          <ChevronDown 
+                            size={20} 
+                            className={`transition-transform text-gray-500 ${expandedVocabSections['vocabulary'] ? 'transform rotate-180' : ''}`} 
+                          />
                         </div>
+                        
+                        {/* Vocabulary Content */}
+                        {expandedVocabSections['vocabulary'] && (
+                          <div className="p-4 space-y-4">
+                            {selectedQuestion.vocabulary.map((item, index) => (
+                              <div key={index} className="group p-4 border border-gray-100 rounded-lg hover:border-blue-200 hover:bg-blue-50/30 transition-all duration-200">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className="font-semibold text-gray-900 mb-1">{item.text}</div>
+                                    <div className="text-gray-600 mb-2">{item.meaning}</div>
+                                    <span className="inline-block bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-xs px-3 py-1 rounded-full font-medium">
+                                      {item.type}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePersonalWortschatz(item, selectedSubtopic?.id || '');
+                                    }}
+                                    className={`p-2.5 rounded-full transition-all duration-200 ${
+                                      isInPersonalWortschatz(item, selectedSubtopic?.id || '') 
+                                        ? 'text-green-600 bg-green-100 hover:bg-green-200' 
+                                        : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'
+                                    }`}
+                                    title={isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'Remove from My Wortschatz' : 'Add to My Wortschatz'}
+                                  >
+                                    {isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 
+                                      <Check size={18} /> : 
+                                      <Plus size={18} />
+                                    }
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
                 
-                <div className="border-t pt-6">
-                  <h4 className="font-semibold text-gray-700 mb-4">Provide Your Answer</h4>
-                  
-                  {/* Answer Input Options */}
-                  <div className="flex items-center justify-center space-x-4 mb-6">
-                    {!isRecording && !recordedAudio && !showTextInput && (
-                      <>
-                        {/* Record Audio Button */}
+                {/* Recording Section */}
+                <div className="border-t pt-8">
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
+                    <h4 className="font-bold text-gray-800 mb-4 flex items-center text-xl">
+                      <Mic className="w-6 h-6 mr-2 text-purple-600" />
+                      Record Your Answer
+                    </h4>
+                    
+                    <div className="flex items-center justify-center space-x-6 mb-8">
+                      {!isRecording && !recordedAudio && (
                         <button
                           onClick={startRecording}
-                          className="flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-full w-14 h-14 shadow-lg"
-                          title="Record audio answer"
+                          className="flex items-center justify-center bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
                         >
-                          <Mic size={24} />
+                          <Mic size={32} />
                         </button>
-                        
-                        {/* Text Input Button */}
-                        <button
-                          onClick={() => setShowTextInput(true)}
-                          className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-full w-14 h-14 shadow-lg"
-                          title="Type text answer"
-                        >
-                          <Plus size={24} />
-                        </button>
-                      </>
-                    )}
-                    
-                    {isRecording && (
-                      <button
-                        onClick={stopRecording}
-                        className="flex items-center justify-center bg-gray-700 hover:bg-gray-800 text-white rounded-full w-14 h-14 shadow-lg animate-pulse"
-                      >
-                        <Square size={24} />
-                      </button>
-                    )}
-                    
-                    {recordedAudio && !isRecording && (
-                      <>
-                        <button
-                          onClick={playRecording}
-                          className="flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-full w-14 h-14 shadow-lg"
-                        >
-                          <Play size={24} />
-                        </button>
-                        
-                        <button
-                          onClick={resetRecording}
-                          className="flex items-center justify-center bg-gray-500 hover:bg-gray-600 text-white rounded-full w-14 h-14 shadow-lg"
-                        >
-                          <RotateCcw size={24} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  
-                  {/* Text Input Section */}
-                  {showTextInput && (
-                    <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                      <div className="flex justify-between items-center mb-3">
-                        <h5 className="font-medium text-gray-700">Type Your Answer</h5>
-                        <button
-                          onClick={() => {
-                            setShowTextInput(false);
-                            setTextAnswer('');
-                            setCurrentFeedback(null);
-                          }}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          <X size={20} />
-                        </button>
-                      </div>
+                      )}
                       
-                      <textarea
-                        value={textAnswer}
-                        onChange={(e) => setTextAnswer(e.target.value)}
-                        placeholder="Type your answer here..."
-                        className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-none"
-                        disabled={isCheckingAnswer}
-                      />
-                      
-                      <div className="flex justify-end mt-3">
+                      {isRecording && (
                         <button
-                          onClick={handleTextAnswerSubmit}
-                          disabled={!textAnswer.trim() || isCheckingAnswer}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          onClick={stopRecording}
+                          className="flex items-center justify-center bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-full w-20 h-20 shadow-xl animate-pulse"
                         >
-                          {isCheckingAnswer ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Checking...
-                            </>
-                          ) : (
-                            'Submit Answer'
-                          )}
+                          <Square size={32} />
                         </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Current Feedback Display */}
-                  {currentFeedback && (
-                    <div className="bg-white border rounded-xl p-6 shadow-sm mb-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-gray-800 flex items-center">
-                          <MessageCircle size={20} className="mr-2" />
-                          Answer Feedback
-                        </h4>
-                        <div className="flex items-center">
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            currentFeedback.score >= 80 ? 'bg-green-100 text-green-800' :
-                            currentFeedback.score >= 60 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            Score: {currentFeedback.score}/100
-                          </span>
-                        </div>
-                      </div>
+                      )}
                       
-                      <div className="space-y-4">
-                        <div>
-                          <h5 className="font-medium text-gray-700 mb-2">Overall Feedback:</h5>
-                          <p className="text-gray-600">{currentFeedback.feedback}</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <h5 className="font-medium text-green-700 mb-2">Strengths:</h5>
-                            <ul className="list-disc list-inside text-sm text-green-600 space-y-1">
-                              {currentFeedback.strengths.map((strength, index) => (
-                                <li key={index}>{strength}</li>
-                              ))}
-                            </ul>
-                          </div>
+                      {recordedAudio && !isRecording && (
+                        <>
+                          <button
+                            onClick={playRecording}
+                            className="flex items-center justify-center bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                          >
+                            <Play size={32} />
+                          </button>
                           
-                          <div>
-                            <h5 className="font-medium text-orange-700 mb-2">Areas to Improve:</h5>
-                            <ul className="list-disc list-inside text-sm text-orange-600 space-y-1">
-                              {currentFeedback.improvements.map((improvement, index) => (
-                                <li key={index}>{improvement}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <h5 className="font-medium text-gray-700 mb-2">Improved Version:</h5>
-                          <div className="bg-blue-50 p-3 rounded-lg">
-                            <p className="text-gray-700 italic">{currentFeedback.improvedAnswer}</p>
-                          </div>
+                          <button
+                            onClick={resetRecording}
+                            className="flex items-center justify-center bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                          >
+                            <RotateCcw size={32} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {isRecording && (
+                      <div className="text-center mb-6">
+                        <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full inline-flex items-center">
+                          <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+                          Recording in progress...
                         </div>
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* Answer Attempts Dropdown */}
-                  {answerAttempts.length > 0 && (
-                    <div className="mb-6">
-                      <button
-                        onClick={() => setShowAttempts(!showAttempts)}
-                        className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <span className="font-medium text-gray-700">
-                          Previous Attempts ({answerAttempts.length})
-                        </span>
-                        <ChevronDown 
-                          size={20} 
-                          className={`transition-transform ${showAttempts ? 'transform rotate-180' : ''}`} 
-                        />
-                      </button>
-                      
-                      {showAttempts && (
-                        <div className="mt-3 space-y-3 max-h-96 overflow-y-auto">
-                          {answerAttempts.map((attempt) => (
-                            <div key={attempt.id} className="border rounded-lg p-4 bg-white">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center space-x-2">
-                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                                    attempt.isTextInput ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {attempt.isTextInput ? 'Text' : 'Audio'}
-                                  </span>
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                    attempt.score >= 80 ? 'bg-green-100 text-green-800' :
-                                    attempt.score >= 60 ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {attempt.score}/100
-                                  </span>
-                                </div>
-                                <span className="text-xs text-gray-500">
-                                  {attempt.timestamp.toLocaleString()}
-                                </span>
+                    )}
+                    
+                    {recordedAudio && !showFeedback && (
+                      <div className="text-center">
+                        <button
+                          onClick={() => setShowFeedback(true)}
+                          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl shadow-lg font-semibold transform hover:scale-105 transition-all duration-200"
+                        >
+                          Get AI Feedback
+                        </button>
+                      </div>
+                    )}
+                    
+                    {feedback && showFeedback && (
+                      <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
+                        <h4 className="font-bold text-gray-800 mb-6 flex items-center text-xl">
+                          <MessageCircle size={24} className="mr-2 text-blue-600" />
+                          AI Feedback Report
+                        </h4>
+                        
+                        <div className="grid grid-cols-2 gap-6 mb-8">
+                          {[
+                            { label: 'Fluency', value: feedback.fluency, color: 'from-green-400 to-green-600' },
+                            { label: 'Pronunciation', value: feedback.pronunciation, color: 'from-blue-400 to-blue-600' },
+                            { label: 'Vocabulary', value: feedback.vocabulary, color: 'from-purple-400 to-purple-600' },
+                            { label: 'Grammar', value: feedback.grammar, color: 'from-yellow-400 to-yellow-600' }
+                          ].map((metric) => (
+                            <div key={metric.label} className="text-center">
+                              <div className="text-sm font-medium text-gray-600 mb-2">{metric.label}</div>
+                              <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden mb-2">
+                                <div 
+                                  className={`h-full bg-gradient-to-r ${metric.color} rounded-full transition-all duration-1000 ease-out`}
+                                  style={{ width: `${metric.value}%` }}
+                                ></div>
                               </div>
-                              
-                              <div className="space-y-2">
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Your Answer:</p>
-                                  <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">{attempt.userAnswer}</p>
-                                </div>
-                                
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Improved Version:</p>
-                                  <p className="text-sm text-gray-600 bg-blue-50 p-2 rounded italic">{attempt.improvedAnswer}</p>
-                                </div>
-                                
-                                <div className="text-xs text-gray-500">
-                                  <p><strong>Feedback:</strong> {attempt.feedback}</p>
-                                </div>
-                              </div>
+                              <div className="text-lg font-bold text-gray-800">{metric.value}%</div>
                             </div>
                           ))}
                         </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {recordedAudio && !showFeedback && (
-                    <div className="text-center">
-                      <button
-                        onClick={() => setShowFeedback(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg shadow-md font-medium"
-                      >
-                        Get Feedback
-                      </button>
-                    </div>
-                  )}
-                  
-                  {feedback && showFeedback && (
-                    <div className="mt-6 bg-white border rounded-xl p-6 shadow-sm">
-                      <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
-                        <MessageCircle size={20} className="mr-2" />
-                        AI Feedback
-                      </h4>
-                      
-                      <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div>
-                          <div className="text-sm text-gray-600 mb-1">Fluency</div>
-                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-green-500 rounded-full" 
-                              style={{ width: `${feedback.fluency}%` }}
-                            ></div>
-                          </div>
-                          <div className="text-right text-sm mt-1">{feedback.fluency}%</div>
-                        </div>
                         
-                        <div>
-                          <div className="text-sm text-gray-600 mb-1">Pronunciation</div>
-                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-blue-500 rounded-full" 
-                              style={{ width: `${feedback.pronunciation}%` }}
-                            ></div>
-                          </div>
-                          <div className="text-right text-sm mt-1">{feedback.pronunciation}%</div>
-                        </div>
-                        
-                        <div>
-                          <div className="text-sm text-gray-600 mb-1">Vocabulary</div>
-                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-purple-500 rounded-full" 
-                              style={{ width: `${feedback.vocabulary}%` }}
-                            ></div>
-                          </div>
-                          <div className="text-right text-sm mt-1">{feedback.vocabulary}%</div>
-                        </div>
-                        
-                        <div>
-                          <div className="text-sm text-gray-600 mb-1">Grammar</div>
-                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-yellow-500 rounded-full" 
-                              style={{ width: `${feedback.grammar}%` }}
-                            ></div>
-                          </div>
-                          <div className="text-right text-sm mt-1">{feedback.grammar}%</div>
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl">
+                          <h5 className="font-semibold text-gray-800 mb-3 flex items-center">
+                            <Star className="w-5 h-5 mr-2 text-yellow-500" />
+                            Detailed Comments
+                          </h5>
+                          <ul className="space-y-3">
+                            {feedback.feedback.map((comment, index) => (
+                              <li key={index} className="flex items-start">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                <span className="text-gray-700">{comment}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       </div>
-                      
-                      <div>
-                        <h5 className="font-medium text-gray-700 mb-2">Comments:</h5>
-                        <ul className="space-y-2">
-                          {feedback.feedback.map((comment, index) => (
-                            <li key={index} className="flex items-start">
-                              <Star size={16} className="text-yellow-500 mr-2 mt-1 flex-shrink-0" />
-                              <span className="text-gray-700">{comment}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

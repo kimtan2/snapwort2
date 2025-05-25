@@ -11,6 +11,16 @@
       "static/chunks/main-app.js",
       "static/chunks/app/islands/page.js"
     ],
+    "/api/islands/check-answer/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/islands/check-answer/route.js"
+    ],
+    "/api/islands/save-attempt/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/islands/save-attempt/route.js"
+    ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
