@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, query, where, orderBy, getDocs, addDoc, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, addDoc, Timestamp, Firestore } from 'firebase/firestore';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -14,7 +14,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-let db: any;
+let db: Firestore;
 try {
   const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
   db = getFirestore(app);
@@ -42,15 +42,15 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
 
-    // Query attempts from Firestore
+    // Query attempts from Firestore - REMOVED orderBy to avoid index requirement
     const attemptsRef = collection(db, 'attempts');
     const q = query(
       attemptsRef,
       where('questionId', '==', parseInt(questionId)),
       where('subtopicId', '==', subtopicId),
       where('islandId', '==', islandId),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', userId)
+      // Removed: orderBy('createdAt', 'desc')
     );
 
     const querySnapshot = await getDocs(q);
@@ -71,6 +71,9 @@ export async function GET(request: Request) {
         timestamp: data.createdAt ? data.createdAt.toDate() : new Date()
       };
     });
+
+    // Sort in JavaScript instead of Firestore
+    attempts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return NextResponse.json({ 
       success: true, 

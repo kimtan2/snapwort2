@@ -1,7 +1,4 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
   "/api/islands/save-attempt/route": "app/api/islands/save-attempt/route.js",
-  "/api/islands/check-answer/route": "app/api/islands/check-answer/route.js",
   "/islands/page": "app/islands/page.js"
 }

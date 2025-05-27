@@ -3,9 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target, Edit, Send, History } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
-import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem, SerializedSavedVocabularyItem } from './types';
+import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem} from './types';
 import { db } from '../../lib/firebase';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, where,  deleteDoc, doc,  Timestamp, onSnapshot } from 'firebase/firestore';
 
 interface Attempt {
   id: string;
@@ -57,10 +57,13 @@ export function LanguageIslandsApp() {
   // State for vocabulary management
   const [expandedVocabSections, setExpandedVocabSections] = useState<Record<string, boolean>>({});
   const [personalWortschatz, setPersonalWortschatz] = useState<Record<string, SavedVocabularyItem[]>>({});
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
   const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<Record<string, boolean>>({});
 
+
   // User ID for Firestore - in a real app, this would come from authentication
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [userId, setUserId] = useState<string>('default-user');
 
   // Load saved vocabulary from Firestore on component mount

@@ -44,7 +44,7 @@ async function checkAnswerWithGemini(
   answer: string,
   question: string,
   hints: string[],
-  vocabulary: any[],
+  vocabulary: Array<{ text: string; meaning: string; type: string }>,
   language: 'en' | 'de' = 'en'
 ): Promise<{
   score: number;

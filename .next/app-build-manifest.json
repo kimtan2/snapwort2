@@ -11,20 +11,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/islands/page.js"
     ],
-    "/api/islands/check-answer/route": [
+    "/library/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/islands/check-answer/route.js"
+      "static/chunks/app/library/page.js"
     ],
     "/api/islands/save-attempt/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/islands/save-attempt/route.js"
     ],
-    "/_not-found/page": [
+    "/api/islands/check-answer/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/islands/check-answer/route.js"
     ]
   }
 }
