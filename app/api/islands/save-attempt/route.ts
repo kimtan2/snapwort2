@@ -63,6 +63,9 @@ export async function GET(request: Request) {
         islandId: data.islandId,
         userAnswer: data.userAnswer,
         score: data.score,
+        revised_polished_version: data.revised_polished_version || data.improvedAnswer, // Backward compatibility
+        natural_chunks: data.natural_chunks || [], // New structure
+        // Legacy fields for backward compatibility
         feedback: data.feedback,
         improvedAnswer: data.improvedAnswer,
         strengths: data.strengths || [],
@@ -104,6 +107,9 @@ export async function POST(request: Request) {
       userId = 'anonymous',
       userAnswer,
       score,
+      revised_polished_version,
+      natural_chunks = [],
+      // Legacy fields for backward compatibility
       feedback,
       improvedAnswer,
       strengths = [],
@@ -118,7 +124,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Create the attempt document
+    // Create the attempt document with new structure
     const attemptData = {
       questionId: parseInt(questionId),
       subtopicId,
@@ -126,8 +132,11 @@ export async function POST(request: Request) {
       userId,
       userAnswer,
       score: score || 0,
+      revised_polished_version: revised_polished_version || improvedAnswer || '',
+      natural_chunks: Array.isArray(natural_chunks) ? natural_chunks : [],
+      // Keep legacy fields for backward compatibility
       feedback: feedback || '',
-      improvedAnswer: improvedAnswer || '',
+      improvedAnswer: improvedAnswer || revised_polished_version || '',
       strengths: Array.isArray(strengths) ? strengths : [],
       improvements: Array.isArray(improvements) ? improvements : [],
       isTextInput: Boolean(isTextInput),

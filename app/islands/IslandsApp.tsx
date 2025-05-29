@@ -19,6 +19,81 @@ interface Attempt {
   timestamp: Date;
 }
 
+interface ProgressData {
+  [islandId: string]: {
+    [subtopicId: string]: number; // percentage completed
+  };
+}
+
+// Beautiful Circular Progress Component
+interface CircularProgressProps {
+  percentage: number;
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}
+
+const CircularProgress: React.FC<CircularProgressProps> = ({ 
+  percentage, 
+  size = 40, 
+  strokeWidth = 3, 
+  className = "" 
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percentage / 100) * circumference;
+
+  return (
+    <div className={`relative ${className}`} style={{ width: size, height: size }}>
+      <svg
+        width={size}
+        height={size}
+        className="transform -rotate-90 drop-shadow-sm"
+      >
+        {/* Background circle */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="rgba(255, 255, 255, 0.3)"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        
+        {/* Progress circle with gradient */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="url(#progressGradient)"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-1000 ease-out"
+        />
+        
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3B82F6" />
+            <stop offset="50%" stopColor="#8B5CF6" />
+            <stop offset="100%" stopColor="#06B6D4" />
+          </linearGradient>
+        </defs>
+      </svg>
+      
+      {/* Percentage text */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-xs font-bold text-white drop-shadow-md">
+          {Math.round(percentage)}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export function LanguageIslandsApp() {
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
   const [selectedSubtopic, setSelectedSubtopic] = useState<Subtopic | null>(null);
@@ -61,6 +136,8 @@ export function LanguageIslandsApp() {
   const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
   const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<Record<string, boolean>>({});
 
+  // Progress tracking state
+  const [progressData, setProgressData] = useState<ProgressData>({});
 
   // User ID for Firestore - in a real app, this would come from authentication
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -112,6 +189,71 @@ export function LanguageIslandsApp() {
     // Clean up the listener when the component unmounts
     return () => unsubscribe();
   }, [userId]);
+
+  // Load progress data from Firestore
+  useEffect(() => {
+    if (!userId) return;
+
+    const attemptsCollection = collection(db, 'attempts');
+    const q = query(attemptsCollection, where('userId', '==', userId));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      try {
+        const newProgressData: ProgressData = {};
+        
+        // Group attempts by island and subtopic
+        const attemptsByLocation: Record<string, Record<string, Set<number>>> = {};
+        
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const { islandId, subtopicId, questionId } = data;
+          
+          if (!attemptsByLocation[islandId]) {
+            attemptsByLocation[islandId] = {};
+          }
+          if (!attemptsByLocation[islandId][subtopicId]) {
+            attemptsByLocation[islandId][subtopicId] = new Set();
+          }
+          
+          attemptsByLocation[islandId][subtopicId].add(questionId);
+        });
+        
+        // Calculate progress percentages
+        Object.entries(ISLANDS_DATA).forEach(([islandId, island]) => {
+          newProgressData[islandId] = {};
+          
+          Object.entries(island.subtopics).forEach(([subtopicId, subtopic]) => {
+            const totalQuestions = subtopic.questions.length;
+            const attemptedQuestions = attemptsByLocation[islandId]?.[subtopicId]?.size || 0;
+            const percentage = totalQuestions > 0 ? (attemptedQuestions / totalQuestions) * 100 : 0;
+            
+            newProgressData[islandId][subtopicId] = percentage;
+          });
+        });
+        
+        setProgressData(newProgressData);
+      } catch (error) {
+        console.error('Failed to load progress data:', error);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  // Calculate island progress (average of subtopic progress)
+  const getIslandProgress = (islandId: string): number => {
+    const island = ISLANDS_DATA[islandId];
+    if (!island || !progressData[islandId]) return 0;
+    
+    const subtopicIds = Object.keys(island.subtopics);
+    if (subtopicIds.length === 0) return 0;
+    
+    const totalProgress = subtopicIds.reduce((sum, subtopicId) => {
+      return sum + (progressData[islandId][subtopicId] || 0);
+    }, 0);
+    
+    return totalProgress / subtopicIds.length;
+  };
 
   // Load attempts when question changes
   useEffect(() => {
@@ -306,38 +448,42 @@ export function LanguageIslandsApp() {
         <div className="absolute top-1/3 right-1/4 w-2 h-2 bg-green-400 rounded-full animate-bounce delay-1000 opacity-60"></div>
         
         {/* Islands */}
-        {Object.values(ISLANDS_DATA).map((island) => (
-          <div 
-            key={island.id}
-            className="absolute cursor-pointer transform transition-all duration-500 hover:scale-125 hover:z-10"
-            style={{ 
-              left: `${island.position.x}%`, 
-              top: `${island.position.y}%`,
-            }}
-            onClick={() => setSelectedIsland(island)}
-          >
-            {/* Island glow effect */}
-            <div className={`absolute inset-0 w-20 h-20 -translate-x-2 -translate-y-2 rounded-full bg-gradient-to-br ${island.color} opacity-20 blur-xl animate-pulse`}></div>
-            
-            {/* Main island */}
-            <div className={`relative w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br ${island.color} text-white text-2xl shadow-xl border-2 border-white/30 hover:shadow-2xl transition-all duration-300`}>
-              <span className="relative z-10">{island.icon}</span>
-              <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/10 to-transparent"></div>
-            </div>
-            
-            {/* Island name */}
-            <div className="mt-3 text-center">
-              <div className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-lg border border-white/40">
-                <span className="font-semibold text-gray-800 text-sm">{island.name}</span>
+        {Object.values(ISLANDS_DATA).map((island) => {
+          const progress = getIslandProgress(island.id);
+          
+          return (
+            <div 
+              key={island.id}
+              className="absolute cursor-pointer transform transition-all duration-500 hover:scale-125 hover:z-10"
+              style={{ 
+                left: `${island.position.x}%`, 
+                top: `${island.position.y}%`,
+              }}
+              onClick={() => setSelectedIsland(island)}
+            >
+              {/* Island glow effect */}
+              <div className={`absolute inset-0 w-20 h-20 -translate-x-2 -translate-y-2 rounded-full bg-gradient-to-br ${island.color} opacity-20 blur-xl animate-pulse`}></div>
+              
+              {/* Main island */}
+              <div className={`relative w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br ${island.color} text-white text-2xl shadow-xl border-2 border-white/30 hover:shadow-2xl transition-all duration-300`}>
+                <span className="relative z-10">{island.icon}</span>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/10 to-transparent"></div>
+              </div>
+              
+              {/* Island name */}
+              <div className="mt-3 text-center">
+                <div className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-lg border border-white/40">
+                  <span className="font-semibold text-gray-800 text-sm">{island.name}</span>
+                </div>
+              </div>
+
+              {/* Progress indicator */}
+              <div className="absolute -top-2 -right-2">
+                <CircularProgress percentage={progress} size={32} strokeWidth={2} />
               </div>
             </div>
-
-            {/* Progress indicator */}
-            <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
-              <Award className="w-3 h-3 text-yellow-800" />
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Decorative title */}
         <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
@@ -463,8 +609,12 @@ export function LanguageIslandsApp() {
               <div className="sticky top-0 bg-white p-6 border-b border-gray-100 rounded-t-2xl z-10">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center">
-                    <div className={`w-16 h-16 flex items-center justify-center rounded-2xl bg-gradient-to-br ${selectedIsland.color} text-white text-2xl mr-4 shadow-lg`}>
+                    <div className={`w-16 h-16 flex items-center justify-center rounded-2xl bg-gradient-to-br ${selectedIsland.color} text-white text-2xl mr-4 shadow-lg relative`}>
                       <span>{selectedIsland.icon}</span>
+                      {/* Island progress in header */}
+                      <div className="absolute -top-1 -right-1">
+                        <CircularProgress percentage={getIslandProgress(selectedIsland.id)} size={24} strokeWidth={2} />
+                      </div>
                     </div>
                     <div>
                       <h2 className="text-3xl font-bold text-gray-800">{selectedIsland.name}</h2>
@@ -489,76 +639,84 @@ export function LanguageIslandsApp() {
                 </div>
                 
                 <div className="grid gap-4">
-                  {Object.values(selectedIsland.subtopics).map((subtopic) => (
-                    <div key={subtopic.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 bg-gradient-to-r from-white to-gray-50">
-                      <div 
-                        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                        onClick={() => toggleSubtopic(subtopic.id)}
-                      >
-                        <div className="flex items-center">
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mr-4">
-                            <span className="text-2xl">{subtopic.icon}</span>
+                  {Object.values(selectedIsland.subtopics).map((subtopic) => {
+                    const subtopicProgress = progressData[selectedIsland.id]?.[subtopic.id] || 0;
+                    
+                    return (
+                      <div key={subtopic.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 bg-gradient-to-r from-white to-gray-50">
+                        <div 
+                          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => toggleSubtopic(subtopic.id)}
+                        >
+                          <div className="flex items-center">
+                            <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mr-4 relative">
+                              <span className="text-2xl">{subtopic.icon}</span>
+                              {/* Subtopic progress indicator */}
+                              <div className="absolute -top-1 -right-1">
+                                <CircularProgress percentage={subtopicProgress} size={20} strokeWidth={1.5} />
+                              </div>
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-800 text-lg">{subtopic.name}</h4>
+                              <p className="text-gray-500 text-sm">{subtopic.questions.length} practice questions</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-semibold text-gray-800 text-lg">{subtopic.name}</h4>
-                            <p className="text-gray-500 text-sm">{subtopic.questions.length} practice questions</p>
+                          <div className="flex items-center space-x-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSubtopicWortschatz(subtopic.id);
+                              }}
+                              className="p-2 rounded-full transition-colors bg-green-100 text-green-600 hover:bg-green-200"
+                              title="View Personal Wortschatz"
+                            >
+                              <BookOpen size={20} />
+                            </button>
+                            <ChevronRight 
+                              className={`transform transition-transform text-gray-400 ${expandedSubtopics[subtopic.id] ? 'rotate-90' : ''}`} 
+                              size={20} 
+                            />
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSubtopicWortschatz(subtopic.id);
-                            }}
-                            className="p-2 rounded-full transition-colors bg-green-100 text-green-600 hover:bg-green-200"
-                            title="View Personal Wortschatz"
-                          >
-                            <BookOpen size={20} />
-                          </button>
-                          <ChevronRight 
-                            className={`transform transition-transform text-gray-400 ${expandedSubtopics[subtopic.id] ? 'rotate-90' : ''}`} 
-                            size={20} 
-                          />
-                        </div>
-                      </div>
-                      
-                      {expandedSubtopics[subtopic.id] && (
-                        <div className="border-t">
-                          <div className="p-4 space-y-3">
-                            {subtopic.questions.map((q) => (
-                              <div 
-                                key={`${selectedIsland.id}-${subtopic.id}-${q.id}`}
-                                className="group p-4 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 cursor-pointer transition-all duration-200"
-                                onClick={() => selectQuestion(q, subtopic.id)}
-                              >
-                                <div className="flex justify-between items-start">
-                                  <div className="flex-1">
-                                    <div className="font-semibold text-blue-700 group-hover:text-blue-800 mb-2">{q.title}</div>
-                                    <div className="text-gray-600 text-sm mb-2">{q.question}</div>
-                                  </div>
-                                  <div className="flex items-center space-x-2 ml-4">
-                                    {q.vocabulary && q.vocabulary.length > 0 && (
-                                      <button 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggleSubtopicWortschatz(subtopic.id);
-                                        }}
-                                        className="p-2 bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
-                                        title="View Vocabulary"
-                                      >
-                                        <BookOpen size={18} />
-                                      </button>
-                                    )}
-                                    <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={16} />
+                        
+                        {expandedSubtopics[subtopic.id] && (
+                          <div className="border-t">
+                            <div className="p-4 space-y-3">
+                              {subtopic.questions.map((q) => (
+                                <div 
+                                  key={`${selectedIsland.id}-${subtopic.id}-${q.id}`}
+                                  className="group p-4 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 cursor-pointer transition-all duration-200"
+                                  onClick={() => selectQuestion(q, subtopic.id)}
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <div className="font-semibold text-blue-700 group-hover:text-blue-800 mb-2">{q.title}</div>
+                                      <div className="text-gray-600 text-sm mb-2">{q.question}</div>
+                                    </div>
+                                    <div className="flex items-center space-x-2 ml-4">
+                                      {q.vocabulary && q.vocabulary.length > 0 && (
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleSubtopicWortschatz(subtopic.id);
+                                          }}
+                                          className="p-2 bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
+                                          title="View Vocabulary"
+                                        >
+                                          <BookOpen size={18} />
+                                        </button>
+                                      )}
+                                      <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={16} />
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

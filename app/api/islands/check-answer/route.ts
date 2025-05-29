@@ -48,10 +48,11 @@ async function checkAnswerWithGemini(
   language: 'en' | 'de' = 'en'
 ): Promise<{
   score: number;
-  feedback: string;
-  improvedAnswer: string;
-  strengths: string[];
-  improvements: string[];
+  revised_polished_version: string;
+  natural_chunks: Array<{
+    category: string;
+    expressions: string[];
+  }>;
 }> {
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
@@ -64,8 +65,7 @@ async function checkAnswerWithGemini(
       ? `\n\nHints provided:\n${hints.map((hint, i) => `${i + 1}. ${hint}`).join('\n')}`
       : '';
     
-    const prompt = `
-You are an expert ${language === 'en' ? 'English' : 'German'} language teacher evaluating a student's speaking practice response.
+    const prompt = `You are an expert ${language === 'en' ? 'English' : 'German'} language teacher evaluating a student's speaking practice response.
 
 Question: "${question}"
 ${hintsContext}
@@ -73,23 +73,41 @@ ${vocabularyContext}
 
 Student's Answer: "${answer}"
 
-Please evaluate this answer and provide detailed feedback. Consider:
-1. Content relevance and completeness
-2. Language accuracy (grammar, vocabulary usage)
-3. Natural flow and coherence
-4. Use of relevant vocabulary from the provided list
-5. Following the hints provided
+Please evaluate this answer and provide feedback in the following JSON format:
 
-Format your response as a JSON object with the following structure:
 {
-  "score": number, // Score from 1-100
-  "feedback": "detailed constructive feedback focusing on what they did well and what could be improved",
-  "improvedAnswer": "an improved version of their answer that maintains their ideas but enhances language, structure, and vocabulary usage",
-  "strengths": ["strength 1", "strength 2", "strength 3"], // What they did well
-  "improvements": ["improvement 1", "improvement 2", "improvement 3"] // Specific areas to work on
+  "score": number, // Score from 1-100 based on content relevance, language accuracy, natural flow, and vocabulary usage
+  "revised_polished_version": "A complete, polished version of the student's response using natural ${language === 'en' ? 'English' : 'German'} while maintaining their original ideas and structure",
+  "natural_chunks": [
+    {
+      "category": "relevant functional category based on the topic",
+      "expressions": [
+        "useful expression 1 from polished version",
+        "useful expression 2 from polished version", 
+        "useful expression 3 from polished version"
+      ]
+    },
+    {
+      "category": "another relevant functional category",
+      "expressions": [
+        "useful expression 1 from polished version",
+        "useful expression 2 from polished version",
+        "useful expression 3 from polished version"
+      ]
+    }
+  ]
 }
 
-Be encouraging and constructive. Focus on practical improvements they can apply to future responses.`;
+Focus on:
+1. Creating a polished version that sounds natural while keeping the student's original ideas and flow
+2. Extracting key expressions and chunks FROM the polished version that demonstrate natural, native-like language
+3. Organizing these expressions by functional categories relevant to the specific topic and question type
+4. Ensure the chunks directly correspond to what the student was trying to express and can be applied to similar discussion topics
+5. Providing a fair score that reflects content quality, language accuracy, natural flow, and vocabulary usage
+
+The natural chunks should be taken directly from your polished version to show the student exactly which expressions they should learn to improve their speaking.
+
+Respond only in valid JSON format.`;
 
     // Call the Gemini model using REST API
     const response = await fetch(
@@ -148,20 +166,30 @@ Be encouraging and constructive. Focus on practical improvements they can apply 
       // Return the feedback results with fallbacks
       return {
         score: parsedData.score || 75,
-        feedback: parsedData.feedback || "Good effort! Keep practicing to improve your language skills.",
-        improvedAnswer: parsedData.improvedAnswer || answer,
-        strengths: Array.isArray(parsedData.strengths) ? parsedData.strengths : ["You attempted the question", "You used relevant language", "You stayed on topic"],
-        improvements: Array.isArray(parsedData.improvements) ? parsedData.improvements : ["Try to expand your ideas", "Use more varied vocabulary", "Practice connecting sentences smoothly"]
+        revised_polished_version: parsedData.revised_polished_version || answer,
+        natural_chunks: Array.isArray(parsedData.natural_chunks) ? parsedData.natural_chunks : [
+          {
+            category: "General Expression",
+            expressions: ["Keep practicing!", "You're making good progress", "Try to expand your ideas"]
+          }
+        ]
       };
     } catch (parseError) {
       console.error("JSON parse error:", parseError);
       // Provide a fallback response
       return {
         score: 70,
-        feedback: "I had trouble analyzing your response in detail, but you're making good progress! Keep practicing and focus on using clear, complete sentences.",
-        improvedAnswer: answer,
-        strengths: ["You provided a response", "You attempted to answer the question", "You're practicing actively"],
-        improvements: ["Try to expand your ideas", "Use more descriptive language", "Practice organizing your thoughts clearly"]
+        revised_polished_version: answer,
+        natural_chunks: [
+          {
+            category: "Practice Encouragement",
+            expressions: ["You provided a response", "You attempted to answer the question", "You're practicing actively"]
+          },
+          {
+            category: "Areas for Improvement", 
+            expressions: ["Try to expand your ideas", "Use more descriptive language", "Practice organizing your thoughts clearly"]
+          }
+        ]
       };
     }
   } catch (error) {

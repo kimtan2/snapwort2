@@ -42,7 +42,7 @@ export type Island = {
 
 export type IslandsData = Record<string, Island>;
 
-// New type for attempt tracking
+// Updated type for attempt tracking with new feedback structure
 export type Attempt = {
   id: string;
   questionId: number;
@@ -51,10 +51,21 @@ export type Attempt = {
   userId: string;
   userAnswer: string;
   score: number;
-  feedback: string;
-  improvedAnswer: string;
-  strengths: string[];
-  improvements: string[];
+  revised_polished_version: string;
+  natural_chunks: Array<{
+    category: string;
+    expressions: string[];
+  }>;
   isTextInput: boolean;
   timestamp: Date;
+};
+
+// Updated feedback type for the new structure
+export type TextFeedback = {
+  score: number;
+  revised_polished_version: string;
+  natural_chunks: Array<{
+    category: string;
+    expressions: string[];
+  }>;
 };
