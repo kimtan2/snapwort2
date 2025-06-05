@@ -75,6 +75,22 @@ export function BottomNav() {
             )} />
             <span className="text-xs font-medium">Islands</span>
           </Link>
+          
+          <Link
+            href="/land"
+            className={cn(
+              'flex flex-col items-center justify-center py-3 px-6 rounded-xl transition-all',
+              pathname.startsWith('/land')
+                ? 'bg-primary-50 text-primary-700' 
+                : 'text-gray-600 hover:text-primary-600 hover:bg-gray-50'
+            )}
+          >
+            <Globe className={cn(
+              "h-5 w-5 mb-1",
+              pathname.startsWith('/land') ? 'text-primary-700' : 'text-gray-500'
+            )} />
+            <span className="text-xs font-medium">Land</span>
+          </Link>
         </div>
       </div>
     </nav>

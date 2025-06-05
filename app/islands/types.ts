@@ -4,12 +4,19 @@ export type VocabularyItem = {
   meaning: string;
 };
 
+export type VocabularyHints = {
+  category: string;
+  expressions: string[];
+};
+
 export type Question = {
   id: number;
   title: string;
   question: string;
+  sampleAnswer?: string;
   hints: string[];
   vocabulary?: VocabularyItem[];
+  vocabularyHints?: VocabularyHints[];
 };
 
 export type SavedVocabularyItem = VocabularyItem & {

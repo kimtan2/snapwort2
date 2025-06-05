@@ -1,7 +1,6 @@
 {
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/islands/save-attempt/route": "app/api/islands/save-attempt/route.js",
   "/islands/page": "app/islands/page.js",
-  "/library/page": "app/library/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/land/page": "app/land/page.js",
   "/page": "app/page.js"
 }

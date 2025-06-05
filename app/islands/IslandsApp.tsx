@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target, Edit, Send, History } from 'lucide-react';
+import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target, Edit, Send, History, Eye, EyeOff } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
 import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem} from './types';
 import { db } from '../../lib/firebase';
-import { collection, query, where,  deleteDoc, doc,  Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, where,  deleteDoc, doc,  Timestamp, onSnapshot, addDoc } from 'firebase/firestore';
 
 interface Attempt {
   id: string;
@@ -135,6 +135,9 @@ export function LanguageIslandsApp() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [activeSubtopicId, setActiveSubtopicId] = useState<string | null>(null);
   const [showPersonalWortschatz, setShowPersonalWortschatz] = useState<Record<string, boolean>>({});
+
+  // New states for showing sample answer and vocabulary hints
+  const [showSampleAnswer, setShowSampleAnswer] = useState(false);
 
   // Progress tracking state
   const [progressData, setProgressData] = useState<ProgressData>({});
@@ -372,6 +375,12 @@ export function LanguageIslandsApp() {
     ) || false;
   };
 
+  const isExpressionInWortschatz = (expression: string, subtopicId: string) => {
+    return personalWortschatz[subtopicId]?.some(vocab => 
+      vocab.text === expression
+    ) || false;
+  };
+
   const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
     setPersonalWortschatz(prev => {
       const currentItems = prev[subtopicId] || [];
@@ -402,6 +411,61 @@ export function LanguageIslandsApp() {
     });
   };
 
+  const toggleExpressionInWortschatz = async (expression: string, category: string, subtopicId: string) => {
+    try {
+      const currentItems = personalWortschatz[subtopicId] || [];
+      const existingItem = currentItems.find(vocab => vocab.text === expression);
+
+      if (existingItem) {
+        // Remove from Firestore
+        await deleteDoc(doc(db, 'vocabulary', existingItem.id));
+        
+        // Update local state (optimistic update)
+        setPersonalWortschatz(prev => {
+          const updatedItems = prev[subtopicId]?.filter(vocab => vocab.text !== expression) || [];
+          return {
+            ...prev,
+            [subtopicId]: updatedItems
+          };
+        });
+      } else {
+        // Add to Firestore
+        const newItem = {
+          type: 'expression',
+          text: expression,
+          meaning: `${category} expression`,
+          userId: userId,
+          subtopicId: subtopicId,
+          language: 'en', // You might want to make this dynamic
+          dateAdded: Timestamp.now()
+        };
+        
+        const docRef = await addDoc(collection(db, 'vocabulary'), newItem);
+        
+        // Update local state (optimistic update)
+        const localItem: SavedVocabularyItem = {
+          type: 'expression' as const,
+          text: expression,
+          meaning: `${category} expression`,
+          id: docRef.id,
+          dateAdded: new Date(),
+          subtopicId: subtopicId
+        };
+        
+        setPersonalWortschatz(prev => {
+          const currentItems = prev[subtopicId] || [];
+          return {
+            ...prev,
+            [subtopicId]: [...currentItems, localItem]
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling expression in Wortschatz:', error);
+      // You might want to show an error message to the user here
+    }
+  };
+
   const toggleSubtopicWortschatz = (subtopicId: string) => {
     setShowPersonalWortschatz(prev => ({
       ...prev,
@@ -430,6 +494,7 @@ export function LanguageIslandsApp() {
     setIsTextInputMode(false);
     setAttempts([]);
     setShowAttempts(false);
+    setShowSampleAnswer(false);
   };
 
   const renderIslandMap = () => {
@@ -585,6 +650,7 @@ export function LanguageIslandsApp() {
     resetTextInput();
     setAttempts([]);
     setShowAttempts(false);
+    setShowSampleAnswer(false);
   };
 
   return (
@@ -694,18 +760,6 @@ export function LanguageIslandsApp() {
                                       <div className="text-gray-600 text-sm mb-2">{q.question}</div>
                                     </div>
                                     <div className="flex items-center space-x-2 ml-4">
-                                      {q.vocabulary && q.vocabulary.length > 0 && (
-                                        <button 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleSubtopicWortschatz(subtopic.id);
-                                          }}
-                                          className="p-2 bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
-                                          title="View Vocabulary"
-                                        >
-                                          <BookOpen size={18} />
-                                        </button>
-                                      )}
                                       <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={16} />
                                     </div>
                                   </div>
@@ -854,6 +908,35 @@ export function LanguageIslandsApp() {
                   </div>
                   
                   <div className="space-y-6">
+                    {/* Sample Answer Section */}
+                    {selectedQuestion.sampleAnswer && (
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl overflow-hidden">
+                        <div 
+                          className="p-5 cursor-pointer hover:bg-green-50 transition-colors"
+                          onClick={() => setShowSampleAnswer(!showSampleAnswer)}
+                        >
+                          <h4 className="font-semibold text-green-800 flex items-center justify-between">
+                            <div className="flex items-center">
+                              <Award size={18} className="mr-2" />
+                              Sample Answer
+                            </div>
+                            <div className="flex items-center">
+                              {showSampleAnswer ? (
+                                <EyeOff size={20} className="text-green-600" />
+                              ) : (
+                                <Eye size={20} className="text-green-600" />
+                              )}
+                            </div>
+                          </h4>
+                        </div>
+                        {showSampleAnswer && (
+                          <div className="px-5 pb-5">
+                            <p className="text-green-700 leading-relaxed">{selectedQuestion.sampleAnswer}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Hints Section */}
                     <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl overflow-hidden">
                       <div 
@@ -884,6 +967,54 @@ export function LanguageIslandsApp() {
                         </div>
                       )}
                     </div>
+
+                    {/* Vocabulary Hints Section */}
+                    {selectedQuestion.vocabularyHints && selectedQuestion.vocabularyHints.length > 0 && (
+                      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl overflow-hidden">
+                        <div 
+                          className="p-5 cursor-pointer hover:bg-purple-50 transition-colors"
+                          onClick={() => toggleVocabSection('vocabularyHints')}
+                        >
+                          <h4 className="font-semibold text-purple-800 flex items-center justify-between">
+                            <div className="flex items-center">
+                              <MessageCircle size={18} className="mr-2" />
+                              Vocabulary Hints
+                            </div>
+                            <ChevronDown 
+                              size={20} 
+                              className={`transition-transform text-purple-600 ${expandedVocabSections['vocabularyHints'] ? 'transform rotate-180' : ''}`} 
+                            />
+                          </h4>
+                        </div>
+                        {expandedVocabSections['vocabularyHints'] && (
+                          <div className="px-5 pb-5 space-y-4">
+                            {selectedQuestion.vocabularyHints.map((vocabHint, index) => (
+                              <div key={index} className="border-l-4 border-purple-300 pl-4">
+                                <h5 className="font-semibold text-purple-800 mb-2">{vocabHint.category}:</h5>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {vocabHint.expressions.map((expression, expIndex) => (
+                                    <button
+                                      key={expIndex}
+                                      onClick={async () => await toggleExpressionInWortschatz(expression, vocabHint.category, selectedSubtopic?.id || '')}
+                                      className={`text-sm text-left px-3 py-2 rounded-md transition-all duration-200 hover:shadow-sm ${
+                                        isExpressionInWortschatz(expression, selectedSubtopic?.id || '')
+                                          ? 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                                          : 'bg-white/50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                                      }`}
+                                      title={isExpressionInWortschatz(expression, selectedSubtopic?.id || '') 
+                                        ? 'Click to remove from Personal Wortschatz' 
+                                        : 'Click to add to Personal Wortschatz'}
+                                    >
+                                      "{expression}"
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Personal Wortschatz for Question */}
                     {showPersonalWortschatz[selectedSubtopic.id] && (
@@ -942,63 +1073,7 @@ export function LanguageIslandsApp() {
                           <div className="text-center py-6 text-indigo-600">
                             <BookOpen className="w-12 h-12 mx-auto mb-3 text-indigo-300" />
                             <p>No vocabulary added yet.</p>
-                            <p className="text-sm">Add vocabulary from the section below.</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Vocabulary Section */}
-                    {selectedQuestion.vocabulary && selectedQuestion.vocabulary.length > 0 && (
-                      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                        {/* Vocabulary Header */}
-                        <div 
-                          className="bg-gradient-to-r from-gray-50 to-blue-50 p-4 flex justify-between items-center cursor-pointer hover:from-gray-100 hover:to-blue-100 transition-colors"
-                          onClick={() => toggleVocabSection('vocabulary')}
-                        >
-                          <div className="flex items-center">
-                            <MessageCircle size={18} className="mr-2 text-blue-600" />
-                            <span className="font-semibold text-gray-800">VOCABULARY</span>
-                          </div>
-                          <ChevronDown 
-                            size={20} 
-                            className={`transition-transform text-gray-500 ${expandedVocabSections['vocabulary'] ? 'transform rotate-180' : ''}`} 
-                          />
-                        </div>
-                        
-                        {/* Vocabulary Content */}
-                        {expandedVocabSections['vocabulary'] && (
-                          <div className="p-4 space-y-4">
-                            {selectedQuestion.vocabulary.map((item, index) => (
-                              <div key={index} className="group p-4 border border-gray-100 rounded-lg hover:border-blue-200 hover:bg-blue-50/30 transition-all duration-200">
-                                <div className="flex justify-between items-start">
-                                  <div className="flex-1">
-                                    <div className="font-semibold text-gray-900 mb-1">{item.text}</div>
-                                    <div className="text-gray-600 mb-2">{item.meaning}</div>
-                                    <span className="inline-block bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-xs px-3 py-1 rounded-full font-medium">
-                                      {item.type}
-                                    </span>
-                                  </div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      togglePersonalWortschatz(item, selectedSubtopic?.id || '');
-                                    }}
-                                    className={`p-2.5 rounded-full transition-all duration-200 ${
-                                      isInPersonalWortschatz(item, selectedSubtopic?.id || '') 
-                                        ? 'text-green-600 bg-green-100 hover:bg-green-200' 
-                                        : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'
-                                    }`}
-                                    title={isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 'Remove from My Wortschatz' : 'Add to My Wortschatz'}
-                                  >
-                                    {isInPersonalWortschatz(item, selectedSubtopic?.id || '') ? 
-                                      <Check size={18} /> : 
-                                      <Plus size={18} />
-                                    }
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
+                            <p className="text-sm">Add vocabulary by clicking on expressions above.</p>
                           </div>
                         )}
                       </div>
