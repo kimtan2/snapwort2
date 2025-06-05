@@ -1,6 +1,6 @@
 {
+  "/api/islands/save-attempt/route": "app/api/islands/save-attempt/route.js",
   "/islands/page": "app/islands/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
   "/land/page": "app/land/page.js",
   "/page": "app/page.js"
 }
