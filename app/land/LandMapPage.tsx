@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Zap, ShoppingCart, Building2, Palette, Coffee, GraduationCap, Heart, Plane, Home, Car, TreePine } from 'lucide-react';
+import { MapPin, Zap, ShoppingCart, Building2, Palette, Coffee, GraduationCap, Heart, Plane, Home, TreePine } from 'lucide-react';
+import { useMissionCaller } from './missionCaller';
 
 // Location data with icons and positions
 const locations = [
@@ -79,8 +80,28 @@ const locations = [
   }
 ];
 
-// Animated background elements
+// Animated background elements - Fixed to prevent hydration mismatch
 const BackgroundElements = () => {
+  const [particles, setParticles] = useState<Array<{
+    id: number;
+    left: number;
+    top: number;
+    delay: number;
+    duration: number;
+  }>>([]);
+
+  // Generate particles only on client side to avoid hydration mismatch
+  useEffect(() => {
+    const generatedParticles = Array.from({ length: 8 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      top: Math.random() * 100,
+      delay: i * 2,
+      duration: 4 + Math.random() * 4
+    }));
+    setParticles(generatedParticles);
+  }, []);
+
   return (
     <div className="absolute inset-0 overflow-hidden">
       {/* Animated clouds */}
@@ -129,21 +150,21 @@ const BackgroundElements = () => {
         />
       </svg>
       
-      {/* Decorative trees */}
+      {/* Decorative trees - static positions */}
       <TreePine className="absolute bottom-20 left-10 w-8 h-8 text-green-400/60 animate-bounce" style={{ animationDelay: '1s', animationDuration: '3s' }} />
       <TreePine className="absolute bottom-32 right-16 w-6 h-6 text-green-500/50 animate-bounce" style={{ animationDelay: '2s', animationDuration: '4s' }} />
       <TreePine className="absolute top-1/3 left-1/4 w-5 h-5 text-green-400/40 animate-bounce" style={{ animationDelay: '3s', animationDuration: '5s' }} />
       
-      {/* Floating particles */}
-      {Array.from({ length: 8 }, (_, i) => (
+      {/* Floating particles - only render after hydration */}
+      {particles.map((particle) => (
         <div
-          key={i}
+          key={particle.id}
           className="absolute w-2 h-2 bg-blue-300/30 rounded-full animate-ping"
           style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animationDelay: `${i * 2}s`,
-            animationDuration: `${4 + Math.random() * 4}s`
+            left: `${particle.left}%`,
+            top: `${particle.top}%`,
+            animationDelay: `${particle.delay}s`,
+            animationDuration: `${particle.duration}s`
           }}
         />
       ))}
@@ -291,6 +312,9 @@ export default function LandMapPage() {
   const [hoveredLocation, setHoveredLocation] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Mission caller hook
+  const { startStatementMission } = useMissionCaller();
 
   const handleLocationClick = (location: any) => {
     setSelectedLocation(location);
@@ -298,9 +322,8 @@ export default function LandMapPage() {
   };
 
   const handleLightningClick = () => {
-    // Handle lightning button action - could trigger a special mode or quick practice
-    console.log('Lightning button clicked! Starting quick practice mode...');
-    // You could implement a random location selector or special practice mode here
+    console.log('Lightning button clicked! Starting Statement Mission...');
+    startStatementMission();
   };
 
   const closeModal = () => {
