@@ -21,11 +21,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/land/page.js"
     ],
-    "/api/islands/save-attempt/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/islands/save-attempt/route.js"
-    ],
     "/missions/statementStellungnahme/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

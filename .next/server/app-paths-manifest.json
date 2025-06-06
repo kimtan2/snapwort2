@@ -1,9 +1,4 @@
 {
-  "/api/generate-context/route": "app/api/generate-context/route.js",
-  "/api/transcribe-audio/route": "app/api/transcribe-audio/route.js",
   "/api/analyze-statement-response/route": "app/api/analyze-statement-response/route.js",
-  "/page": "app/page.js",
-  "/land/page": "app/land/page.js",
-  "/islands/page": "app/islands/page.js",
   "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js"
 }
