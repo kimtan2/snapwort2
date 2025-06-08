@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Plus, Check, Trash2, Sparkles, Award, Target, Edit, Send, History, Eye, EyeOff } from 'lucide-react';
+import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Check, Trash2, Sparkles, Award, Target, Edit, Send, History, Eye, EyeOff } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
 import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem} from './types';
 import { db } from '../../lib/firebase';
@@ -369,46 +369,10 @@ export function LanguageIslandsApp() {
     }));
   };
 
-  const isInPersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
-    return personalWortschatz[subtopicId]?.some(vocab => 
-      vocab.text === item.text && vocab.meaning === item.meaning
-    ) || false;
-  };
-
   const isExpressionInWortschatz = (expression: string, subtopicId: string) => {
     return personalWortschatz[subtopicId]?.some(vocab => 
       vocab.text === expression
     ) || false;
-  };
-
-  const togglePersonalWortschatz = (item: VocabularyItem, subtopicId: string) => {
-    setPersonalWortschatz(prev => {
-      const currentItems = prev[subtopicId] || [];
-      const existingIndex = currentItems.findIndex(vocab => 
-        vocab.text === item.text && vocab.meaning === item.meaning
-      );
-
-      let updatedItems: SavedVocabularyItem[];
-      
-      if (existingIndex >= 0) {
-        // Remove from personal Wortschatz - create new array without the item
-        updatedItems = currentItems.filter((_, index) => index !== existingIndex);
-      } else {
-        // Add to personal Wortschatz - create new array with the item
-        const newItem: SavedVocabularyItem = {
-          ...item,
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          dateAdded: new Date(),
-          subtopicId: subtopicId
-        };
-        updatedItems = [...currentItems, newItem];
-      }
-
-      return {
-        ...prev,
-        [subtopicId]: updatedItems
-      };
-    });
   };
 
   const toggleExpressionInWortschatz = async (expression: string, category: string, subtopicId: string) => {
@@ -1005,7 +969,7 @@ export function LanguageIslandsApp() {
                                         ? 'Click to remove from Personal Wortschatz' 
                                         : 'Click to add to Personal Wortschatz'}
                                     >
-                                      "{expression}"
+                                      &quot;{expression}&quot;
                                     </button>
                                   ))}
                                 </div>
