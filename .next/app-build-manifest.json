@@ -11,11 +11,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/islands/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/islands/page.js"
-    ],
     "/land/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -26,20 +21,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/missions/statementStellungnahme/page.js"
     ],
-    "/api/generate-context/route": [
+    "/api/generate-custom-mission/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/generate-context/route.js"
+      "static/chunks/app/api/generate-custom-mission/route.js"
     ],
-    "/api/transcribe-audio/route": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/transcribe-audio/route.js"
-    ],
-    "/api/analyze-statement-response/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/analyze-statement-response/route.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

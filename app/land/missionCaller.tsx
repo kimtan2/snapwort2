@@ -8,7 +8,15 @@ export const useMissionCaller = () => {
     router.push('/missions/statementStellungnahme');
   };
 
+  const startCustomMission = (missionData: any) => {
+    console.log('Starting Custom Mission with data:', missionData);
+    // Store the custom mission data in sessionStorage for the mission component to access
+    sessionStorage.setItem('currentCustomMission', JSON.stringify(missionData));
+    router.push('/missions/statementStellungnahme');
+  };
+
   return {
-    startStatementMission
+    startStatementMission,
+    startCustomMission
   };
 };

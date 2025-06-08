@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, MessageSquare, Mic, Square, Play, RotateCcw, ThumbsUp, ThumbsDown, 
   Send, Sparkles, Award, Volume2, Clock, Users, Edit3, Copy, CheckCircle, 
-  Target, Shield, Zap, Star, FileText, Brain, Rocket
+  Target, Shield, Zap, Star, FileText, Brain, Rocket, Heart
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { data } from '../../land/data/statementStellungnahmeData';
@@ -16,10 +16,20 @@ interface Statement {
 
 type Phase = 'briefing' | 'loading' | 'context' | 'choice' | 'recording' | 'transcription' | 'processing' | 'feedback';
 type Position = 'agree' | 'disagree' | null;
+type MissionType = 'agreeDisagree' | 'situationReact';
 
 interface FeedbackData {
   briefFeedback: string;
   vocabularyImprovements: string[];
+}
+
+interface CustomMission {
+  type: string;
+  subType: string;
+  question?: string;
+  situation?: string;
+  task?: string;
+  aiNotes?: string;
 }
 
 export default function StatementStellungnahmePage() {
@@ -37,6 +47,9 @@ export default function StatementStellungnahmePage() {
   const [error, setError] = useState<string | null>(null);
   const [missionProgress, setMissionProgress] = useState(0);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [customMission, setCustomMission] = useState<CustomMission | null>(null);
+  const [isCustomMission, setIsCustomMission] = useState(false);
+  const [missionType, setMissionType] = useState<MissionType>('agreeDisagree');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -44,6 +57,19 @@ export default function StatementStellungnahmePage() {
 
   // Initialize mission on component mount
   useEffect(() => {
+    // Check if there's a custom mission in sessionStorage
+    const customMissionData = sessionStorage.getItem('currentCustomMission');
+    if (customMissionData) {
+      try {
+        const parsedMission = JSON.parse(customMissionData);
+        setCustomMission(parsedMission);
+        setIsCustomMission(true);
+        console.log('Custom mission loaded:', parsedMission);
+      } catch (error) {
+        console.error('Error parsing custom mission:', error);
+      }
+    }
+    
     // Start with briefing phase
     setMissionProgress(10);
   }, []);
@@ -53,24 +79,52 @@ export default function StatementStellungnahmePage() {
     setMissionProgress(25);
     
     try {
-      // Randomly select a statement
-      const statements = data.topics[0].statements;
-      const randomStatement = statements[Math.floor(Math.random() * statements.length)];
-      setSelectedStatement(randomStatement);
+      if (isCustomMission && customMission) {
+        // Generate custom mission using AI
+        const customResponse = await fetch('/api/generate-custom-mission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ missionData: customMission })
+        });
 
-      // Generate context using Gemini API
-      const contextResponse = await fetch('/api/generate-context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statement: randomStatement.statement })
-      });
+        if (!customResponse.ok) {
+          throw new Error('Failed to generate custom mission');
+        }
 
-      if (!contextResponse.ok) {
-        throw new Error('Failed to generate context');
+        const customMissionData = await customResponse.json();
+        
+        // Set the generated statement and context
+        setSelectedStatement({
+          id: 1,
+          statement: customMissionData.statement
+        });
+        setContext(customMissionData.context);
+        setMissionType(customMissionData.missionType || customMission.subType);
+        
+        // Clear the session storage
+        sessionStorage.removeItem('currentCustomMission');
+      } else {
+        // Use default random statement logic
+        const statements = data.topics[0].statements;
+        const randomStatement = statements[Math.floor(Math.random() * statements.length)];
+        setSelectedStatement(randomStatement);
+        setMissionType('agreeDisagree'); // Default to agree/disagree
+
+        // Generate context using existing API
+        const contextResponse = await fetch('/api/generate-context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ statement: randomStatement.statement })
+        });
+
+        if (!contextResponse.ok) {
+          throw new Error('Failed to generate context');
+        }
+
+        const contextData = await contextResponse.json();
+        setContext(contextData.context);
       }
 
-      const contextData = await contextResponse.json();
-      setContext(contextData.context);
       setMissionProgress(40);
       
       // Transition to context display
@@ -80,8 +134,14 @@ export default function StatementStellungnahmePage() {
       }, 1000);
       
       setTimeout(() => {
-        setCurrentPhase('choice');
-        setMissionProgress(60);
+        // For situationReact, skip choice phase and go directly to recording
+        if (missionType === 'situationReact') {
+          setCurrentPhase('recording');
+          setMissionProgress(70);
+        } else {
+          setCurrentPhase('choice');
+          setMissionProgress(60);
+        }
       }, 4000);
     } catch (err) {
       setError('Failed to initialize mission. Please try again.');
@@ -175,15 +235,25 @@ export default function StatementStellungnahmePage() {
     setMissionProgress(90);
     
     try {
+      // Prepare the context and instructions for AI analysis
+      let analysisContext = context;
+      let additionalInstructions = '';
+      
+      if (isCustomMission && customMission) {
+        if (customMission.aiNotes) {
+          additionalInstructions = `\n\nSpecial Assessment Instructions: ${customMission.aiNotes}`;
+        }
+      }
+
       // Get feedback from Gemini
       const feedbackResponse = await fetch('/api/analyze-statement-response', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           statement: selectedStatement.statement,
-          position: userPosition,
+          position: missionType === 'agreeDisagree' ? userPosition : 'response', // For situationReact, use 'response'
           userResponse: editedTranscription,
-          context: context
+          context: analysisContext + additionalInstructions
         })
       });
 
@@ -205,21 +275,30 @@ export default function StatementStellungnahmePage() {
   const copyPromptToClipboard = () => {
     if (!selectedStatement || !editedTranscription) return;
     
-    const prompt = `You are analyzing a language learner's response to a controversial statement in a discussion exercise.
+    let analysisContext = context;
+    let additionalInstructions = '';
+    
+    if (isCustomMission && customMission) {
+      if (customMission.aiNotes) {
+        additionalInstructions = `\n\nSpecial Assessment Instructions: ${customMission.aiNotes}`;
+      }
+    }
+    
+    const prompt = `You are analyzing a language learner's response to a ${missionType === 'agreeDisagree' ? 'controversial statement' : 'situational scenario'} in a discussion exercise.
 
-Context: ${context}
-Statement: "${selectedStatement.statement}"
-User's position: ${userPosition}
+Context: ${analysisContext}${additionalInstructions}
+${missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}: "${selectedStatement.statement}"
+User's position: ${missionType === 'agreeDisagree' ? userPosition : 'responding to situation'}
 User's response: "${editedTranscription}"
 
 Provide feedback in this exact JSON format:
 {
-  "briefFeedback": "One sentence of encouraging feedback about their argument or expression",
+  "briefFeedback": "One sentence of encouraging feedback about their ${missionType === 'agreeDisagree' ? 'argument or expression' : 'response or reaction'}",
   "vocabularyImprovements": ["suggestion 1", "suggestion 2", "suggestion 3"]
 }
 
 Guidelines:
-- briefFeedback: One sentence only! Be encouraging but specific about what they did well in their argument or language use.
+- briefFeedback: One sentence only! Be encouraging but specific about what they did well in their ${missionType === 'agreeDisagree' ? 'argument' : 'response'} or language use.
 - vocabularyImprovements: Exactly 1-3 concrete vocabulary suggestions that would make their response more sophisticated or natural. Focus on better word choices, phrases, or expressions they could have used.`;
 
     navigator.clipboard.writeText(prompt).then(() => {
@@ -241,9 +320,16 @@ Guidelines:
     setFeedback(null);
     setError(null);
     setMissionProgress(10);
+    setCustomMission(null);
+    setIsCustomMission(false);
+    setMissionType('agreeDisagree');
+    // Clear any remaining session storage
+    sessionStorage.removeItem('currentCustomMission');
   };
 
   const goBack = () => {
+    // Clear session storage when going back
+    sessionStorage.removeItem('currentCustomMission');
     router.push('/land');
   };
 
@@ -311,7 +397,7 @@ Guidelines:
           <div className="text-center mb-8">
             <div className="relative inline-block mb-6">
               <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-600 rounded-full flex items-center justify-center shadow-2xl">
-                <Target className="w-12 h-12 text-white" />
+                {isCustomMission ? <Star className="w-12 h-12 text-white" /> : <Target className="w-12 h-12 text-white" />}
               </div>
               <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
                 <Zap className="w-4 h-4 text-white" />
@@ -319,11 +405,26 @@ Guidelines:
             </div>
             
             <h1 className="text-4xl font-bold text-white mb-4">
-              Mission: Statement Analysis
+              {isCustomMission ? `Custom Mission: ${missionType === 'agreeDisagree' ? 'Statement Analysis' : 'Situation Response'}` : 'Mission: Statement Analysis'}
             </h1>
             <p className="text-blue-200 text-lg leading-relaxed">
-              Agent, you have been assigned a critical discussion mission. Your task is to analyze a controversial statement and provide a compelling argument.
+              {isCustomMission 
+                ? `Agent, you have been assigned a custom ${missionType === 'agreeDisagree' ? 'discussion mission' : 'situational response mission'} based on your specifications.`
+                : 'Agent, you have been assigned a critical discussion mission. Your task is to analyze a controversial statement and provide a compelling argument.'
+              }
             </p>
+            
+            {isCustomMission && customMission && (
+              <div className="mt-6 bg-green-500/20 rounded-2xl p-4 border border-green-400/30">
+                <h3 className="text-green-300 font-semibold mb-2">Custom Mission Parameters</h3>
+                <p className="text-green-100 text-sm">
+                  {missionType === 'agreeDisagree' 
+                    ? `Topic: ${customMission.question}` 
+                    : `Situation: ${customMission.situation}`
+                  }
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6 mb-8">
@@ -333,18 +434,37 @@ Guidelines:
                 Mission Objectives
               </h3>
               <ul className="text-blue-100 space-y-2 text-sm">
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full mr-3"></div>
-                  Analyze the given statement critically
-                </li>
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
-                  Choose your position (agree/disagree)
-                </li>
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-green-400 rounded-full mr-3"></div>
-                  Record a compelling argument
-                </li>
+                {missionType === 'agreeDisagree' ? (
+                  <>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mr-3"></div>
+                      Analyze the given statement critically
+                    </li>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
+                      Choose your position (agree/disagree)
+                    </li>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mr-3"></div>
+                      Record a compelling argument
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mr-3"></div>
+                      Understand the situation presented
+                    </li>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
+                      Respond naturally and appropriately
+                    </li>
+                    <li className="flex items-center">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mr-3"></div>
+                      Show empathy and understanding
+                    </li>
+                  </>
+                )}
                 <li className="flex items-center">
                   <div className="w-2 h-2 bg-yellow-400 rounded-full mr-3"></div>
                   Receive AI-powered feedback
@@ -370,7 +490,7 @@ Guidelines:
               onClick={initializeMission}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 rounded-2xl font-semibold text-lg shadow-2xl transform transition-all duration-300 hover:scale-105 flex items-center"
             >
-              <Target className="w-6 h-6 mr-3" />
+              {isCustomMission ? <Star className="w-6 h-6 mr-3" /> : <Target className="w-6 h-6 mr-3" />}
               Begin Mission
             </button>
           </div>
@@ -412,8 +532,15 @@ Guidelines:
             </div>
             <div className="absolute inset-0 w-24 h-24 mx-auto rounded-full border-4 border-white/20 animate-ping"></div>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-4">Mission Intel Loading</h1>
-          <p className="text-xl text-gray-300 mb-6">Preparing discussion scenario...</p>
+          <h1 className="text-4xl font-bold text-white mb-4">
+            {isCustomMission ? 'Generating Custom Mission' : 'Mission Intel Loading'}
+          </h1>
+          <p className="text-xl text-gray-300 mb-6">
+            {isCustomMission 
+              ? `Creating your personalized ${missionType === 'agreeDisagree' ? 'discussion' : 'situational response'} scenario...` 
+              : 'Preparing discussion scenario...'
+            }
+          </p>
           <MissionProgressBar />
         </div>
 
@@ -433,15 +560,17 @@ Guidelines:
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-2xl text-center transform animate-fade-in border border-blue-100">
           <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-            <Users className="w-10 h-10 text-white" />
+            {missionType === 'agreeDisagree' ? <Users className="w-10 h-10 text-white" /> : <Heart className="w-10 h-10 text-white" />}
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-6">Mission Scenario</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-6">
+            {isCustomMission ? `Custom ${missionType === 'agreeDisagree' ? 'Mission' : 'Situation'} Scenario` : 'Mission Scenario'}
+          </h2>
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200 mb-6">
             <p className="text-lg text-blue-900 leading-relaxed">{context}</p>
           </div>
           <div className="flex items-center justify-center text-gray-500 mb-4">
             <Clock className="w-5 h-5 mr-2" />
-            Prepare for statement analysis...
+            {missionType === 'agreeDisagree' ? 'Prepare for statement analysis...' : 'Prepare your response...'}
           </div>
           <MissionProgressBar />
         </div>
@@ -449,8 +578,8 @@ Guidelines:
     );
   }
 
-  // Choice Phase
-  if (currentPhase === 'choice') {
+  // Choice Phase (only for agreeDisagree)
+  if (currentPhase === 'choice' && missionType === 'agreeDisagree') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         {/* Header */}
@@ -465,7 +594,7 @@ Guidelines:
                 Abort Mission
               </button>
               <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-full text-sm font-medium">
-                Mission Active
+                {isCustomMission ? 'Custom Mission Active' : 'Mission Active'}
               </div>
             </div>
           </div>
@@ -539,31 +668,44 @@ Guidelines:
                 <ChevronLeft className="w-5 h-5 mr-1" />
                 Abort Mission
               </button>
-              <div className={`px-4 py-2 rounded-full text-sm font-medium border-2 ${
-                userPosition === 'agree' 
-                  ? 'bg-green-100 text-green-800 border-green-200' 
-                  : 'bg-red-100 text-red-800 border-red-200'
-              }`}>
-                Position: {userPosition === 'agree' ? 'I Agree' : 'I Disagree'}
-              </div>
+              {missionType === 'agreeDisagree' ? (
+                <div className={`px-4 py-2 rounded-full text-sm font-medium border-2 ${
+                  userPosition === 'agree' 
+                    ? 'bg-green-100 text-green-800 border-green-200' 
+                    : 'bg-red-100 text-red-800 border-red-200'
+                }`}>
+                  Position: {userPosition === 'agree' ? 'I Agree' : 'I Disagree'}
+                </div>
+              ) : (
+                <div className="bg-purple-100 text-purple-800 border-purple-200 px-4 py-2 rounded-full text-sm font-medium border-2">
+                  Situation Response
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <div className="max-w-4xl mx-auto px-6 py-12">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">Record Your Argument</h1>
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              {missionType === 'agreeDisagree' ? 'Record Your Argument' : 'Record Your Response'}
+            </h1>
             <p className="text-xl text-gray-600 mb-6">
-              Elaborate on your position. Be specific and provide examples.
+              {missionType === 'agreeDisagree' 
+                ? 'Elaborate on your position. Be specific and provide examples.'
+                : 'Respond naturally to the situation. Show empathy and understanding.'
+              }
             </p>
             <MissionProgressBar />
           </div>
 
-          {/* Statement Reminder */}
+          {/* Statement/Situation Reminder */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl p-6 mb-8 border border-gray-200">
             <div className="flex items-center mb-3">
               <FileText className="w-5 h-5 text-gray-600 mr-2" />
-              <span className="font-medium text-gray-700">Statement</span>
+              <span className="font-medium text-gray-700">
+                {missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}
+              </span>
             </div>
             <p className="text-lg text-gray-800 italic">"{selectedStatement?.statement}"</p>
           </div>
@@ -579,7 +721,12 @@ Guidelines:
                   >
                     <Mic className="w-16 h-16 group-hover:scale-110 transition-transform" />
                   </button>
-                  <p className="text-gray-600 text-lg">Click to start recording your argument</p>
+                  <p className="text-gray-600 text-lg">
+                    {missionType === 'agreeDisagree' 
+                      ? 'Click to start recording your argument'
+                      : 'Click to start recording your response'
+                    }
+                  </p>
                 </div>
               )}
               
@@ -633,6 +780,11 @@ Guidelines:
     );
   }
 
+  // Rest of the phases (Transcription, Processing, Feedback) remain the same structure but with minor text updates for situationReact...
+  // [The remaining phases would be included here with similar conditional text based on missionType]
+
+  // For brevity, I'll include just the key changes for Transcription phase:
+
   // Transcription Phase
   if (currentPhase === 'transcription') {
     return (
@@ -660,13 +812,19 @@ Guidelines:
                 >
                   {copySuccess ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </button>
-                <div className={`px-4 py-2 rounded-full text-sm font-medium border-2 ${
-                  userPosition === 'agree' 
-                    ? 'bg-green-100 text-green-800 border-green-200' 
-                    : 'bg-red-100 text-red-800 border-red-200'
-                }`}>
-                  Position: {userPosition === 'agree' ? 'I Agree' : 'I Disagree'}
-                </div>
+                {missionType === 'agreeDisagree' ? (
+                  <div className={`px-4 py-2 rounded-full text-sm font-medium border-2 ${
+                    userPosition === 'agree' 
+                      ? 'bg-green-100 text-green-800 border-green-200' 
+                      : 'bg-red-100 text-red-800 border-red-200'
+                  }`}>
+                    Position: {userPosition === 'agree' ? 'I Agree' : 'I Disagree'}
+                  </div>
+                ) : (
+                  <div className="bg-purple-100 text-purple-800 border-purple-200 px-4 py-2 rounded-full text-sm font-medium border-2">
+                    Situation Response
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -681,11 +839,13 @@ Guidelines:
             <MissionProgressBar />
           </div>
 
-          {/* Statement Reminder */}
+          {/* Statement/Situation Reminder */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl p-6 mb-8 border border-gray-200">
             <div className="flex items-center mb-3">
               <FileText className="w-5 h-5 text-gray-600 mr-2" />
-              <span className="font-medium text-gray-700">Statement</span>
+              <span className="font-medium text-gray-700">
+                {missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}
+              </span>
             </div>
             <p className="text-lg text-gray-800 italic">"{selectedStatement?.statement}"</p>
           </div>
@@ -778,7 +938,7 @@ Guidelines:
     );
   }
 
-  // Processing Phase
+  // Processing Phase (same logic with minor text changes)
   if (currentPhase === 'processing') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -788,7 +948,7 @@ Guidelines:
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Mission Analysis</h2>
           <p className="text-gray-600 text-lg mb-6">
-            AI is analyzing your argument and preparing feedback...
+            AI is analyzing your {missionType === 'agreeDisagree' ? 'argument' : 'response'} and preparing feedback...
           </p>
           <MissionProgressBar />
         </div>
@@ -796,7 +956,7 @@ Guidelines:
     );
   }
 
-  // Feedback Phase
+  // Feedback Phase (same as before with minor conditional text)
   if (currentPhase === 'feedback') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -830,7 +990,12 @@ Guidelines:
               </div>
             </div>
             <h1 className="text-4xl font-bold text-gray-900 mb-4">Mission Accomplished!</h1>
-            <p className="text-xl text-gray-600 mb-6">Here's your personalized mission report</p>
+            <p className="text-xl text-gray-600 mb-6">
+              {isCustomMission 
+                ? `Your custom ${missionType === 'agreeDisagree' ? 'discussion' : 'situational response'} mission report is ready` 
+                : 'Here\'s your personalized mission report'
+              }
+            </p>
             <div className="w-full bg-green-200 rounded-full h-3 mb-4 overflow-hidden">
               <div className="h-full bg-gradient-to-r from-green-400 to-emerald-500 w-full"></div>
             </div>
