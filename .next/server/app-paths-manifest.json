@@ -1,7 +1,5 @@
 {
   "/api/generate-custom-mission/route": "app/api/generate-custom-mission/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/land/page": "app/land/page.js",
-  "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js"
+  "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js",
+  "/land/page": "app/land/page.js"
 }

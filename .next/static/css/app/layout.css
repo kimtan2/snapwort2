@@ -1465,6 +1465,21 @@ video {
 .top-full {
   top: 100%;
 }
+.bottom-40 {
+  bottom: 10rem;
+}
+.left-20 {
+  left: 5rem;
+}
+.left-40 {
+  left: 10rem;
+}
+.right-40 {
+  right: 10rem;
+}
+.top-40 {
+  top: 10rem;
+}
 .z-0 {
   z-index: 0;
 }
@@ -2190,6 +2205,10 @@ video {
 .border-l-purple-400 {
   --tw-border-opacity: 1;
   border-left-color: rgb(192 132 252 / var(--tw-border-opacity));
+}
+.border-t-white {
+  --tw-border-opacity: 1;
+  border-top-color: rgb(255 255 255 / var(--tw-border-opacity));
 }
 .bg-black {
   --tw-bg-opacity: 1;
