@@ -2,26 +2,32 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.GOOGLE_API_KEY) {
+    if (!process.env.MISTRAL_API_KEY) {
       return NextResponse.json({ 
-        error: 'Google API key is not configured. Please set the GOOGLE_API_KEY environment variable.'
+        error: 'Mistral API key is not configured. Please set the MISTRAL_API_KEY environment variable.'
+      }, { status: 500 });
+    }
+
+    if (!process.env.MISTRAL_AGENT_MISSION_ASSESSMENT_ID_KEY) {
+      return NextResponse.json({ 
+        error: 'Mistral Agent ID is not configured. Please set the MISTRAL_AGENT_MISSION_ASSESSMENT_ID_KEY environment variable.'
       }, { status: 500 });
     }
     
     const { statement, position, userResponse, context } = await request.json();
     
-    if (!statement || !position || !userResponse) {
+    if (!statement || !userResponse) {
       return NextResponse.json({ 
-        error: 'Statement, position, and user response are required'
+        error: 'Statement and user response are required'
       }, { status: 400 });
     }
     
-    console.log(`Analyzing response for position: ${position}`);
+    console.log(`Analyzing response for situation: ${statement}`);
     
     try {
-      const analysis = await analyzeResponseWithGemini(statement, position, userResponse, context);
+      const analysis = await analyzeResponseWithMistralAgent(statement, userResponse, context);
       
-      console.log('Successfully analyzed response');
+      console.log('Successfully analyzed response with Mistral agent');
       return NextResponse.json(analysis);
     } catch (error) {
       console.error(`Error analyzing response:`, error);
@@ -39,9 +45,8 @@ export async function POST(request: Request) {
   }
 }
 
-async function analyzeResponseWithGemini(
-  statement: string, 
-  position: string, 
+async function analyzeResponseWithMistralAgent(
+  situation: string, 
   userResponse: string, 
   context: string
 ): Promise<{
@@ -49,105 +54,45 @@ async function analyzeResponseWithGemini(
   vocabularyImprovements: string[];
 }> {
   try {
-    const apiKey = process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.MISTRAL_API_KEY;
+    const agentId = process.env.MISTRAL_AGENT_MISSION_ASSESSMENT_ID_KEY;
     
-    const prompt = `You are analyzing a language learner's response to a controversial statement in a discussion exercise.
+    // Input structure for Mistral agent
+    const requestBody = {
+      context: context,
+      situation: situation,
+      userResponse: userResponse
+    };
 
-Context: ${context}
-Statement: "${statement}"
-User's position: ${position}
-User's response: "${userResponse}"
-
-Provide feedback in this exact JSON format:
-{
-  "briefFeedback": "One sentence of encouraging feedback about their argument or expression",
-  "vocabularyImprovements": ["suggestion 1", "suggestion 2", "suggestion 3"]
-}
-
-Guidelines:
-- briefFeedback: One sentence only! Be encouraging but specific about what they did well in their argument or language use.
-- vocabularyImprovements: Exactly 1-3 concrete vocabulary suggestions that would make their response more sophisticated or natural. Focus on better word choices, phrases, or expressions they could have used.
-
-Examples of good vocabulary improvements:
-- "Instead of 'I think', try 'I believe' or 'In my opinion' for stronger expression"
-- "Use 'furthermore' or 'moreover' instead of 'also' to sound more academic"
-- "Replace 'really good' with 'highly effective' or 'extremely beneficial'"
-
-Respond only with valid JSON. No other text.`;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 300,
-          },
-        }),
-      }
-    );
+    const response = await fetch(`https://api.mistral.ai/v1/agents/${agentId}/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+      throw new Error(`Mistral Agent API error: ${JSON.stringify(errorData)}`);
     }
 
     const result = await response.json();
     
-    if (!result || !result.candidates || result.candidates.length === 0) {
-      throw new Error('Empty response from Gemini API');
+    if (!result) {
+      throw new Error('Empty response from Mistral Agent API');
     }
 
-    const content = result.candidates[0].content;
-    if (!content || !content.parts || content.parts.length === 0) {
-      throw new Error('Invalid response format from Gemini API');
-    }
-
-    const textContent = content.parts[0].text;
-    
-    // Extract JSON from markdown if needed
-    const jsonRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
-    const match = textContent.match(jsonRegex);
-    
-    let jsonContent = textContent;
-    if (match && match[1]) {
-      jsonContent = match[1].trim();
-    }
-    
-    try {
-      const parsedData = JSON.parse(jsonContent);
-      
-      return {
-        briefFeedback: parsedData.briefFeedback || "Great job expressing your thoughts clearly!",
-        vocabularyImprovements: Array.isArray(parsedData.vocabularyImprovements) 
-          ? parsedData.vocabularyImprovements.slice(0, 3) // Ensure max 3
-          : ["Try using more specific adjectives to strengthen your arguments"]
-      };
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError);
-      
-      // Fallback response
-      return {
-        briefFeedback: "You presented your position clearly and provided relevant supporting points.",
-        vocabularyImprovements: [
-          "Consider using transition words like 'furthermore' or 'however' to connect ideas",
-          "Try replacing common words with more sophisticated alternatives",
-          "Use specific examples to make your arguments more compelling"
-        ]
-      };
-    }
+    // Mistral agent should return JSON directly
+    return {
+      briefFeedback: result.briefFeedback || "Great job expressing your thoughts clearly!",
+      vocabularyImprovements: Array.isArray(result.vocabularyImprovements) 
+        ? result.vocabularyImprovements.slice(0, 3) // Ensure max 3
+        : ["Try using more specific adjectives to strengthen your arguments"]
+    };
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
+    console.error("Error calling Mistral Agent API:", error);
     
     // Fallback response for any error
     return {
