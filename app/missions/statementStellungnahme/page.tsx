@@ -74,7 +74,7 @@ export default function StatementStellungnahmePage() {
         setMissionType(determinedMissionType);
         
         console.log('Mission type set to:', determinedMissionType);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Error parsing custom mission:', error);
         setError('Failed to load custom mission data.');
       }
@@ -206,7 +206,7 @@ export default function StatementStellungnahmePage() {
       
       mediaRecorderRef.current.start();
       setIsRecording(true);
-    } catch (error) {
+    } catch (error: unknown) {
       setError('Could not access microphone. Please check permissions.');
       console.error("Error accessing microphone:", error);
     }
@@ -265,7 +265,7 @@ export default function StatementStellungnahmePage() {
     
     try {
       // Prepare the context and instructions for AI analysis
-      let analysisContext = context;
+      const analysisContext = context;
       let additionalInstructions = '';
       
       if (isCustomMission && customMission) {
@@ -295,7 +295,7 @@ export default function StatementStellungnahmePage() {
       setCurrentPhase('feedback');
       setMissionProgress(100);
 
-    } catch (err) {
+    } catch (err: unknown) {
       setError('Failed to process your response. Please try again.');
       console.error('Processing error:', err);
     }
@@ -304,7 +304,7 @@ export default function StatementStellungnahmePage() {
   const copyPromptToClipboard = () => {
     if (!selectedStatement || !editedTranscription) return;
     
-    let analysisContext = context;
+    const analysisContext = context;
     let additionalInstructions = '';
     
     if (isCustomMission && customMission) {
@@ -313,17 +313,17 @@ export default function StatementStellungnahmePage() {
       }
     }
     
-    const prompt = `You are analyzing a language learner's response to a ${missionType === 'agreeDisagree' ? 'controversial statement' : 'situational scenario'} in a discussion exercise.
+    const prompt = `You are analyzing a language learner&#39;s response to a ${missionType === 'agreeDisagree' ? 'controversial statement' : 'situational scenario'} in a discussion exercise.
 
 Context: ${analysisContext}${additionalInstructions}
-${missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}: "${selectedStatement.statement}"
-User's position: ${missionType === 'agreeDisagree' ? userPosition : 'responding to situation'}
-User's response: "${editedTranscription}"
+${missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}: &quot;${selectedStatement.statement}&quot;
+User&#39;s position: ${missionType === 'agreeDisagree' ? userPosition : 'responding to situation'}
+User&#39;s response: &quot;${editedTranscription}&quot;
 
 Provide feedback in this exact JSON format:
 {
-  "briefFeedback": "One sentence of encouraging feedback about their ${missionType === 'agreeDisagree' ? 'argument or expression' : 'response or reaction'}",
-  "vocabularyImprovements": ["suggestion 1", "suggestion 2", "suggestion 3"]
+  &quot;briefFeedback&quot;: &quot;One sentence of encouraging feedback about their ${missionType === 'agreeDisagree' ? 'argument or expression' : 'response or reaction'}&quot;,
+  &quot;vocabularyImprovements&quot;: [&quot;suggestion 1&quot;, &quot;suggestion 2&quot;, &quot;suggestion 3&quot;]
 }
 
 Guidelines:
@@ -507,7 +507,7 @@ Guidelines:
                 Mission Requirements
               </h3>
               <p className="text-blue-100 text-sm leading-relaxed">
-                Microphone access required. Speak clearly and confidently. You'll have the opportunity to edit your transcription before final submission.
+                Microphone access required. Speak clearly and confidently. You&apos;ll have the opportunity to edit your transcription before final submission.
               </p>
             </div>
           </div>
@@ -645,7 +645,7 @@ Guidelines:
               </div>
               <div className="bg-gray-50 rounded-2xl p-6 mb-6 border border-gray-200">
                 <blockquote className="text-2xl font-medium text-gray-900 leading-relaxed">
-                  "{selectedStatement?.statement}"
+                  &quot;{selectedStatement?.statement}&quot;
                 </blockquote>
               </div>
             </div>
@@ -736,7 +736,7 @@ Guidelines:
                 {missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}
               </span>
             </div>
-            <p className="text-lg text-gray-800 italic">"{selectedStatement?.statement}"</p>
+            <p className="text-lg text-gray-800 italic">&quot;{selectedStatement?.statement}&quot;</p>
           </div>
 
           {/* Recording Interface */}
@@ -871,7 +871,7 @@ Guidelines:
                 {missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}
               </span>
             </div>
-            <p className="text-lg text-gray-800 italic">"{selectedStatement?.statement}"</p>
+            <p className="text-lg text-gray-800 italic">&quot;{selectedStatement?.statement}&quot;</p>
           </div>
 
           {/* Audio Playback */}

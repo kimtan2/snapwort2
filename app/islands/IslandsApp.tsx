@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Square, RotateCcw, ChevronRight, Mic, Star, X, MessageCircle, BookOpen, ChevronDown, Check, Trash2, Sparkles, Award, Target, Edit, Send, History, Eye, EyeOff } from 'lucide-react';
 import { ISLANDS_DATA } from './data';
-import { Island, Subtopic, Question, VocabularyItem, SavedVocabularyItem} from './types';
+import { Island, Subtopic, Question, SavedVocabularyItem} from './types';
 import { db } from '../../lib/firebase';
 import { collection, query, where,  deleteDoc, doc,  Timestamp, onSnapshot, addDoc } from 'firebase/firestore';
 

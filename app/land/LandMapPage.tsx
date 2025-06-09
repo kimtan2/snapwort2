@@ -1,11 +1,59 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Zap, ShoppingCart, Building2, Palette, Coffee, GraduationCap, Heart, Plane, Home, TreePine, Star, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMissionCaller } from './missionCaller';
 
+// TypeScript interfaces
+interface LocationPosition {
+  x: number;
+  y: number;
+}
+
+interface Location {
+  id: string;
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  position: LocationPosition;
+  color: string;
+  hoverColor: string;
+  conversations: string[];
+}
+
+interface MissionType {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+interface StatementSubType {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+interface MissionData {
+  type: string;
+  subType: string;
+  question?: string;
+  aiNotes?: string;
+  situation?: string;
+  task?: string;
+}
+
+interface Particle {
+  id: number;
+  left: number;
+  top: number;
+  delay: number;
+  duration: number;
+}
+
 // Location data with icons and positions (unchanged)
-const locations = [
+const locations: Location[] = [
   {
     id: 'supermarket',
     name: 'Supermarket',
@@ -81,7 +129,7 @@ const locations = [
 ];
 
 // Mission types for the carousel
-const missionTypes = [
+const missionTypes: MissionType[] = [
   {
     id: 'statementStellungnahme',
     name: 'Statement Analysis',
@@ -92,7 +140,7 @@ const missionTypes = [
 ];
 
 // Sub-types for statementStellungnahme
-const statementSubTypes = [
+const statementSubTypes: StatementSubType[] = [
   {
     id: 'agreeDisagree',
     name: 'I agree/disagree',
@@ -109,13 +157,7 @@ const statementSubTypes = [
 
 // Animated background elements - Fixed to prevent hydration mismatch
 const BackgroundElements = () => {
-  const [particles, setParticles] = useState<Array<{
-    id: number;
-    left: number;
-    top: number;
-    delay: number;
-    duration: number;
-  }>>([]);
+  const [particles, setParticles] = useState<Particle[]>([]);
 
   // Generate particles only on client side to avoid hydration mismatch
   useEffect(() => {
@@ -199,10 +241,10 @@ const BackgroundElements = () => {
   );
 };
 
-// Location marker component (unchanged)
+// Location marker component
 const LocationMarker = ({ location, onClick, isHovered, onHover, onLeave }: {
-  location: any;
-  onClick: (location: any) => void;
+  location: Location;
+  onClick: (location: Location) => void;
   isHovered: boolean;
   onHover: (id: string) => void;
   onLeave: () => void;
@@ -292,7 +334,7 @@ const StarbucksMissionButton = ({ onClick }: { onClick: () => void }) => {
 const MissionBuilderModal = ({ isOpen, onClose, onSave }: {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (missionData: any) => void;
+  onSave: (missionData: MissionData) => void;
 }) => {
   const [selectedMissionType, setSelectedMissionType] = useState(missionTypes[0]);
   const [selectedSubType, setSelectedSubType] = useState(statementSubTypes[0]);
@@ -308,7 +350,7 @@ const MissionBuilderModal = ({ isOpen, onClose, onSave }: {
   const [aiNotesB, setAiNotesB] = useState('');
 
   const handleSave = () => {
-    const missionData = {
+    const missionData: MissionData = {
       type: selectedMissionType.id,
       subType: selectedSubType.id,
       ...(selectedSubType.id === 'agreeDisagree' ? {
@@ -542,9 +584,9 @@ const MissionBuilderModal = ({ isOpen, onClose, onSave }: {
   );
 };
 
-// Location modal component (unchanged)
+// Location modal component
 const LocationModal = ({ location, isOpen, onClose }: {
-  location: any;
+  location: Location | null;
   isOpen: boolean;
   onClose: () => void;
 }) => {
@@ -606,14 +648,14 @@ const LocationModal = ({ location, isOpen, onClose }: {
 
 export default function LandMapPage() {
   const [hoveredLocation, setHoveredLocation] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMissionBuilderOpen, setIsMissionBuilderOpen] = useState(false);
   
   // Mission caller hook
   const { startStatementMission, startCustomMission } = useMissionCaller();
 
-  const handleLocationClick = (location: any) => {
+  const handleLocationClick = (location: Location) => {
     setSelectedLocation(location);
     setIsModalOpen(true);
   };
@@ -629,7 +671,7 @@ export default function LandMapPage() {
     }
   };
 
-  const handleSaveCustomMission = (missionData: any) => {
+  const handleSaveCustomMission = (missionData: MissionData) => {
     // Save to localStorage
     localStorage.setItem('customMission', JSON.stringify(missionData));
     console.log('Custom mission saved:', missionData);
