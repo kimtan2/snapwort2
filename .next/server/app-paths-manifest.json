@@ -1,5 +1,4 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/api/generate-custom-mission/route": "app/api/generate-custom-mission/route.js",
   "/api/transcribe-audio/route": "app/api/transcribe-audio/route.js",
   "/api/analyze-statement-response/route": "app/api/analyze-statement-response/route.js",

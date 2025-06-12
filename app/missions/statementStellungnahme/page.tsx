@@ -21,6 +21,7 @@ type MissionType = 'agreeDisagree' | 'situationReact';
 interface FeedbackData {
   briefFeedback: string;
   vocabularyImprovements: string[];
+  polishedVersion: string; // Added polished version
 }
 
 interface CustomMission {
@@ -89,13 +90,12 @@ export default function StatementStellungnahmePage() {
     
     setCurrentPhase('loading');
     setMissionProgress(25);
-    setError(null); // Clear any previous errors
+    setError(null);
     
     try {
       if (isCustomMission && customMission) {
         console.log('Generating custom mission with data:', customMission);
         
-        // Generate custom mission using AI
         const customResponse = await fetch('/api/generate-custom-mission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -111,32 +111,27 @@ export default function StatementStellungnahmePage() {
         const customMissionData = await customResponse.json();
         console.log('Custom mission generated:', customMissionData);
         
-        // Set the generated statement and context
         setSelectedStatement({
           id: 1,
           statement: customMissionData.statement
         });
         setContext(customMissionData.context);
         
-        // Update mission type from API response
         const apiMissionType = customMissionData.missionType || customMission.subType;
         const finalMissionType = apiMissionType === 'situationReact' ? 'situationReact' : 'agreeDisagree';
         setMissionType(finalMissionType);
         
         console.log('Final mission type:', finalMissionType);
         
-        // Clear the session storage
         sessionStorage.removeItem('currentCustomMission');
       } else {
         console.log('Using default random statement');
         
-        // Use default random statement logic
         const statements = data.topics[0].statements;
         const randomStatement = statements[Math.floor(Math.random() * statements.length)];
         setSelectedStatement(randomStatement);
-        setMissionType('agreeDisagree'); // Default to agree/disagree
+        setMissionType('agreeDisagree');
 
-        // Generate context using existing API
         const contextResponse = await fetch('/api/generate-context', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -153,7 +148,6 @@ export default function StatementStellungnahmePage() {
 
       setMissionProgress(40);
       
-      // Transition to context display
       setTimeout(() => {
         console.log('Moving to context phase');
         setCurrentPhase('context');
@@ -161,7 +155,6 @@ export default function StatementStellungnahmePage() {
       }, 1000);
       
       setTimeout(() => {
-        // For situationReact, skip choice phase and go directly to recording
         if (missionType === 'situationReact') {
           console.log('Situation react mission - going to recording');
           setCurrentPhase('recording');
@@ -200,7 +193,6 @@ export default function StatementStellungnahmePage() {
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
         
-        // Automatically transcribe after recording
         transcribeAudio(audioBlob);
       };
       
@@ -217,7 +209,6 @@ export default function StatementStellungnahmePage() {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       
-      // Stop all audio tracks
       if (mediaRecorderRef.current.stream) {
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       }
@@ -264,7 +255,6 @@ export default function StatementStellungnahmePage() {
     setMissionProgress(90);
     
     try {
-      // Prepare the context and instructions for AI analysis
       const analysisContext = context;
       let additionalInstructions = '';
       
@@ -274,13 +264,12 @@ export default function StatementStellungnahmePage() {
         }
       }
 
-      // Get feedback from Gemini
       const feedbackResponse = await fetch('/api/analyze-statement-response', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           statement: selectedStatement.statement,
-          position: missionType === 'agreeDisagree' ? userPosition : 'response', // For situationReact, use 'response'
+          position: missionType === 'agreeDisagree' ? userPosition : 'response',
           userResponse: editedTranscription,
           context: analysisContext + additionalInstructions
         })
@@ -313,22 +302,19 @@ export default function StatementStellungnahmePage() {
       }
     }
     
-    const prompt = `You are analyzing a language learner&#39;s response to a ${missionType === 'agreeDisagree' ? 'controversial statement' : 'situational scenario'} in a discussion exercise.
+    const prompt = `You are analyzing a language learner's response to a ${missionType === 'agreeDisagree' ? 'controversial statement' : 'situational scenario'} in a discussion exercise.
 
 Context: ${analysisContext}${additionalInstructions}
-${missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}: &quot;${selectedStatement.statement}&quot;
-User&#39;s position: ${missionType === 'agreeDisagree' ? userPosition : 'responding to situation'}
-User&#39;s response: &quot;${editedTranscription}&quot;
+${missionType === 'agreeDisagree' ? 'Statement' : 'Situation'}: "${selectedStatement.statement}"
+User's position: ${missionType === 'agreeDisagree' ? userPosition : 'responding to situation'}
+User's response: "${editedTranscription}"
 
-Provide feedback in this exact JSON format:
+Provide feedback and a polished version in this exact JSON format:
 {
-  &quot;briefFeedback&quot;: &quot;One sentence of encouraging feedback about their ${missionType === 'agreeDisagree' ? 'argument or expression' : 'response or reaction'}&quot;,
-  &quot;vocabularyImprovements&quot;: [&quot;suggestion 1&quot;, &quot;suggestion 2&quot;, &quot;suggestion 3&quot;]
-}
-
-Guidelines:
-- briefFeedback: One sentence only! Be encouraging but specific about what they did well in their ${missionType === 'agreeDisagree' ? 'argument' : 'response'} or language use.
-- vocabularyImprovements: Exactly 1-3 concrete vocabulary suggestions that would make their response more sophisticated or natural. Focus on better word choices, phrases, or expressions they could have used.`;
+  "briefFeedback": "One sentence of encouraging feedback about their ${missionType === 'agreeDisagree' ? 'argument or expression' : 'response or reaction'}",
+  "vocabularyImprovements": ["suggestion 1", "suggestion 2", "suggestion 3"],
+  "polishedVersion": "A complete, polished version of the student's response using natural English"
+}`;
 
     navigator.clipboard.writeText(prompt).then(() => {
       setCopySuccess(true);
@@ -352,12 +338,10 @@ Guidelines:
     setCustomMission(null);
     setIsCustomMission(false);
     setMissionType('agreeDisagree');
-    // Clear any remaining session storage
     sessionStorage.removeItem('currentCustomMission');
   };
 
   const goBack = () => {
-    // Clear session storage when going back
     sessionStorage.removeItem('currentCustomMission');
     router.push('/land');
   };
@@ -406,7 +390,6 @@ Guidelines:
   if (currentPhase === 'briefing') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4 relative overflow-hidden">
-        {/* Animated background elements */}
         <div className="absolute inset-0">
           {Array.from({ length: 20 }, (_, i) => (
             <div
@@ -496,7 +479,7 @@ Guidelines:
                 )}
                 <li className="flex items-center">
                   <div className="w-2 h-2 bg-yellow-400 rounded-full mr-3"></div>
-                  Receive AI-powered feedback
+                  Receive AI-powered feedback with polished version
                 </li>
               </ul>
             </div>
@@ -507,7 +490,7 @@ Guidelines:
                 Mission Requirements
               </h3>
               <p className="text-blue-100 text-sm leading-relaxed">
-                Microphone access required. Speak clearly and confidently. You&apos;ll have the opportunity to edit your transcription before final submission.
+                Microphone access required. Speak clearly and confidently. You'll receive detailed feedback and a polished version of your response.
               </p>
             </div>
           </div>
@@ -539,7 +522,6 @@ Guidelines:
   if (currentPhase === 'loading') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center relative overflow-hidden">
-        {/* Animated background */}
         <div className="absolute inset-0">
           {Array.from({ length: 15 }, (_, i) => (
             <div
@@ -611,7 +593,6 @@ Guidelines:
   if (currentPhase === 'choice' && missionType === 'agreeDisagree') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        {/* Header */}
         <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
@@ -636,7 +617,6 @@ Guidelines:
             <MissionProgressBar />
           </div>
 
-          {/* Statement Display */}
           <div className="bg-white rounded-3xl shadow-2xl p-8 mb-12 border border-gray-100 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-purple-600"></div>
             <div className="text-center">
@@ -651,7 +631,6 @@ Guidelines:
             </div>
           </div>
 
-          {/* Choice Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <button
               onClick={() => handlePositionChoice('agree')}
@@ -686,7 +665,6 @@ Guidelines:
   if (currentPhase === 'recording') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        {/* Header */}
         <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
@@ -728,7 +706,6 @@ Guidelines:
             <MissionProgressBar />
           </div>
 
-          {/* Statement/Situation Reminder */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl p-6 mb-8 border border-gray-200">
             <div className="flex items-center mb-3">
               <FileText className="w-5 h-5 text-gray-600 mr-2" />
@@ -739,7 +716,6 @@ Guidelines:
             <p className="text-lg text-gray-800 italic">&quot;{selectedStatement?.statement}&quot;</p>
           </div>
 
-          {/* Recording Interface */}
           <div className="bg-white rounded-3xl shadow-2xl p-8 text-center border border-gray-100">
             <div className="mb-8">
               {!isRecording && !recordedAudio && (
@@ -813,7 +789,6 @@ Guidelines:
   if (currentPhase === 'transcription') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        {/* Header */}
         <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
@@ -863,7 +838,6 @@ Guidelines:
             <MissionProgressBar />
           </div>
 
-          {/* Statement/Situation Reminder */}
           <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl p-6 mb-8 border border-gray-200">
             <div className="flex items-center mb-3">
               <FileText className="w-5 h-5 text-gray-600 mr-2" />
@@ -874,7 +848,6 @@ Guidelines:
             <p className="text-lg text-gray-800 italic">&quot;{selectedStatement?.statement}&quot;</p>
           </div>
 
-          {/* Audio Playback */}
           {recordedAudio && (
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
@@ -893,7 +866,6 @@ Guidelines:
             </div>
           )}
 
-          {/* Transcription Editor */}
           <div className="bg-white rounded-3xl shadow-2xl p-8 border border-gray-100">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold text-gray-800 flex items-center">
@@ -972,7 +944,7 @@ Guidelines:
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Mission Analysis</h2>
           <p className="text-gray-600 text-lg mb-6">
-            AI is analyzing your {missionType === 'agreeDisagree' ? 'argument' : 'response'} and preparing feedback...
+            AI is analyzing your {missionType === 'agreeDisagree' ? 'argument' : 'response'} and preparing detailed feedback with polished version...
           </p>
           <MissionProgressBar />
         </div>
@@ -984,7 +956,6 @@ Guidelines:
   if (currentPhase === 'feedback') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        {/* Header */}
         <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
@@ -1025,12 +996,12 @@ Guidelines:
             </div>
           </div>
 
-          {/* Transcription Display */}
+          {/* Your Original Response */}
           <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold text-gray-900 flex items-center">
                 <Volume2 className="w-6 h-6 text-blue-600 mr-3" />
-                Your Final Response
+                Your Original Response
               </h3>
               <button
                 onClick={copyPromptToClipboard}
@@ -1049,7 +1020,7 @@ Guidelines:
             </div>
           </div>
 
-          {/* Feedback */}
+          {/* AI Feedback */}
           <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-gray-100">
             <div className="flex items-center mb-4">
               <Sparkles className="w-6 h-6 text-purple-600 mr-3" />
@@ -1078,6 +1049,22 @@ Guidelines:
               </div>
             )}
           </div>
+
+          {/* Polished Version - Shown at the end as requested */}
+          {feedback?.polishedVersion && (
+            <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-gray-100">
+              <div className="flex items-center mb-4">
+                <Star className="w-6 h-6 text-green-600 mr-3" />
+                <h3 className="text-xl font-semibold text-gray-900">Polished Version</h3>
+              </div>
+              <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                <p className="text-green-900 text-lg leading-relaxed italic">&quot;{feedback.polishedVersion}&quot;</p>
+              </div>
+              <p className="text-sm text-gray-600 mt-3">
+                This is how a native speaker might express your ideas naturally while maintaining your original meaning and intent.
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex justify-center space-x-4">
