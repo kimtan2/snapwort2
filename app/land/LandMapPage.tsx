@@ -1,8 +1,11 @@
+// app/land/LandMapPage.tsx - UPDATED
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { MapPin, Zap, ShoppingCart, Building2, Palette, Coffee, GraduationCap, Heart, Plane, Home, TreePine, Star, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useMissionCaller } from './missionCaller';
+import { createStation, getStation } from '@/lib/firestore-station';
 
 // TypeScript interfaces
 interface LocationPosition {
@@ -330,7 +333,7 @@ const StarbucksMissionButton = ({ onClick }: { onClick: () => void }) => {
   );
 };
 
-// Enhanced Mission Builder Modal
+// Enhanced Mission Builder Modal (unchanged, keep existing)
 const MissionBuilderModal = ({ isOpen, onClose, onSave }: {
   isOpen: boolean;
   onClose: () => void;
@@ -584,80 +587,49 @@ const MissionBuilderModal = ({ isOpen, onClose, onSave }: {
   );
 };
 
-// Location modal component
-const LocationModal = ({ location, isOpen, onClose }: {
-  location: Location | null;
-  isOpen: boolean;
-  onClose: () => void;
-}) => {
-  if (!isOpen || !location) return null;
-  
-  const Icon = location.icon;
-  
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all duration-300">
-        {/* Header */}
-        <div className={`p-6 bg-gradient-to-br ${location.color} text-white relative overflow-hidden`}>
-          <div className="absolute inset-0 bg-black/10" />
-          <div className="relative flex items-center space-x-4">
-            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-              <Icon className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">{location.name}</h2>
-              <p className="text-white/80">Practice conversations</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors"
-          >
-            <span className="text-white text-xl">×</span>
-          </button>
-        </div>
-        
-        {/* Content */}
-        <div className="p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">Available Scenarios:</h3>
-          <div className="space-y-3">
-            {location.conversations.map((conversation: string, index: number) => (
-              <div
-                key={index}
-                className="p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer border border-gray-100"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-gray-800">{conversation}</span>
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <button
-            onClick={onClose}
-            className="w-full mt-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
-          >
-            Start Practice
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default function LandMapPage() {
+  const router = useRouter();
   const [hoveredLocation, setHoveredLocation] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMissionBuilderOpen, setIsMissionBuilderOpen] = useState(false);
   
   // Mission caller hook
   const { startStatementMission, startCustomMission } = useMissionCaller();
 
+  // Initialize stations in Firestore when component mounts
+  useEffect(() => {
+    initializeStations();
+  }, []);
+
+  const initializeStations = async () => {
+    for (const location of locations) {
+      try {
+        // Check if station already exists
+        const existingStation = await getStation(location.id);
+        
+        if (!existingStation) {
+          // Create station if it doesn't exist
+          await createStation({
+            name: location.name,
+            description: `Practice real-world conversations at ${location.name}. Develop your language skills through immersive scenarios and structured learning paths.`,
+            icon: location.name === 'Supermarket' ? '🛒' :
+                  location.name === 'Bank' ? '🏦' :
+                  location.name === 'Museum' ? '🏛️' :
+                  location.name === 'Café' ? '☕' :
+                  location.name === 'School' ? '🎓' :
+                  location.name === 'Hospital' ? '🏥' :
+                  location.name === 'Airport' ? '✈️' :
+                  location.name === 'Residential Area' ? '🏠' : '📍'
+          });
+        }
+      } catch (error) {
+        console.error(`Error initializing station ${location.id}:`, error);
+      }
+    }
+  };
+
   const handleLocationClick = (location: Location) => {
-    setSelectedLocation(location);
-    setIsModalOpen(true);
+    // Navigate to the station page
+    router.push(`/stations/${location.id}`);
   };
 
   const handleLightningClick = () => {
@@ -675,11 +647,6 @@ export default function LandMapPage() {
     // Save to localStorage
     localStorage.setItem('customMission', JSON.stringify(missionData));
     console.log('Custom mission saved:', missionData);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedLocation(null);
   };
 
   return (
@@ -730,13 +697,6 @@ export default function LandMapPage() {
         isOpen={isMissionBuilderOpen}
         onClose={() => setIsMissionBuilderOpen(false)}
         onSave={handleSaveCustomMission}
-      />
-      
-      {/* Location modal */}
-      <LocationModal
-        location={selectedLocation}
-        isOpen={isModalOpen}
-        onClose={closeModal}
       />
       
       {/* CSS animations */}
