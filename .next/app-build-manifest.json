@@ -6,11 +6,6 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/land/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/land/page.js"
-    ],
     "/stations/[stationId]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

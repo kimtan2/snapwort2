@@ -1,9 +1,9 @@
+// 2. Updated lib/firebase.ts with better error handling
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db as localDb, Word } from './db';
 
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -14,22 +14,52 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Check if all required config values are present
+const requiredConfigKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key as keyof typeof firebaseConfig]);
+
+if (missingKeys.length > 0) {
+  console.error('Missing Firebase configuration keys:', missingKeys);
+  console.error('Please check your .env.local file and ensure all NEXT_PUBLIC_FIREBASE_* variables are set');
+}
+
 // Initialize Firebase
 let app: FirebaseApp;
 let db: Firestore;
 
-if (!getApps().length) {
-  try {
+try {
+  if (!getApps().length) {
+    console.log('Initializing Firebase with config:', {
+      ...firebaseConfig,
+      apiKey: firebaseConfig.apiKey ? '[PRESENT]' : '[MISSING]',
+      // Don't log sensitive data
+    });
+    
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     console.log('Firebase initialized successfully');
-  } catch (error) {
-    console.error('Error initializing Firebase:', error);
-    throw error; // Re-throw the error to handle it in the calling code
+  } else {
+    app = getApps()[0];
+    db = getFirestore(app);
+    console.log('Using existing Firebase app');
   }
-} else {
-  app = getApps()[0];
-  db = getFirestore(app);
+} catch (error) {
+  console.error('Error initializing Firebase:', error);
+  throw error;
+}
+
+// Test Firebase connection
+export async function testFirebaseConnection(): Promise<boolean> {
+  try {
+    // Try to read from a test collection
+    const testCollection = collection(db, 'test');
+    await getDocs(testCollection);
+    console.log('Firebase connection test: SUCCESS');
+    return true;
+  } catch (error) {
+    console.error('Firebase connection test: FAILED', error);
+    return false;
+  }
 }
 
 // Function to sync words from Firestore to local IndexedDB
@@ -80,13 +110,6 @@ export async function syncWordsFromFirestore(userId: string, language: 'en' | 'd
       // Add the word to the local database
       await localDb.words.add(word);
       wordCount++;
-      
-      // Update the word in Firestore to mark it as synced
-      // We use a different collection method for updating since we're using modular API
-      // This is commented out as you would need the setDoc or updateDoc functions imported
-      // and would need to handle exceptions separately
-      
-      // await updateDoc(doc.ref, { synced: true });
     });
     
     await Promise.all(promises);
@@ -98,4 +121,4 @@ export async function syncWordsFromFirestore(userId: string, language: 'en' | 'd
   }
 }
 
-export { db }; 
+export { db };

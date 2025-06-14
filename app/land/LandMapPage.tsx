@@ -1,4 +1,4 @@
-// app/land/LandMapPage.tsx - UPDATED
+// app/land/LandMapPage.tsx - UPDATED WITH CLICK FIXES
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -175,7 +175,7 @@ const BackgroundElements = () => {
   }, []);
 
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
       {/* Animated clouds */}
       <div className="absolute top-8 left-0 w-16 h-8 bg-white/30 rounded-full animate-pulse" 
            style={{ animation: 'float 20s ease-in-out infinite' }} />
@@ -244,7 +244,7 @@ const BackgroundElements = () => {
   );
 };
 
-// Location marker component
+// Location marker component - FIXED VERSION
 const LocationMarker = ({ location, onClick, isHovered, onHover, onLeave }: {
   location: Location;
   onClick: (location: Location) => void;
@@ -260,12 +260,19 @@ const LocationMarker = ({ location, onClick, isHovered, onHover, onLeave }: {
       style={{ 
         left: `${location.position.x}%`, 
         top: `${location.position.y}%`,
-        zIndex: 10
+        zIndex: 50 // INCREASED from 10 to 50
       }}
-      onClick={() => onClick(location)}
+      onClick={(e) => {
+        e.stopPropagation(); // Prevent event bubbling
+        console.log('Location clicked:', location.name);
+        onClick(location);
+      }}
       onMouseEnter={() => onHover(location.id)}
       onMouseLeave={onLeave}
     >
+      {/* Expanded clickable area */}
+      <div className="absolute inset-0 w-20 h-20 -m-4 rounded-full" />
+      
       {/* Pulsing ring */}
       <div className={`absolute inset-0 w-16 h-16 rounded-full bg-gradient-to-br ${location.color} opacity-20 animate-ping group-hover:opacity-30`} />
       
@@ -282,7 +289,7 @@ const LocationMarker = ({ location, onClick, isHovered, onHover, onLeave }: {
       {/* Location name tooltip */}
       <div className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1.5 
                        bg-gray-900/90 text-white text-sm font-medium rounded-lg backdrop-blur-sm
-                       transition-all duration-300 whitespace-nowrap border border-white/10
+                       transition-all duration-300 whitespace-nowrap border border-white/10 z-10
                        ${isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
         {location.name}
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-b-gray-900/90" />
@@ -601,12 +608,14 @@ export default function LandMapPage() {
   }, []);
 
   const initializeStations = async () => {
+    console.log('Initializing stations...');
     for (const location of locations) {
       try {
         // Check if station already exists
         const existingStation = await getStation(location.id);
         
         if (!existingStation) {
+          console.log(`Creating station: ${location.name}`);
           // Create station if it doesn't exist
           await createStation({
             name: location.name,
@@ -620,14 +629,21 @@ export default function LandMapPage() {
                   location.name === 'Airport' ? '✈️' :
                   location.name === 'Residential Area' ? '🏠' : '📍'
           });
+          console.log(`Station created: ${location.name}`);
+        } else {
+          console.log(`Station already exists: ${location.name}`);
         }
       } catch (error) {
         console.error(`Error initializing station ${location.id}:`, error);
       }
     }
+    console.log('Station initialization complete');
   };
 
   const handleLocationClick = (location: Location) => {
+    console.log('handleLocationClick called with:', location.name);
+    console.log('Navigating to:', `/stations/${location.id}`);
+    
     // Navigate to the station page
     router.push(`/stations/${location.id}`);
   };

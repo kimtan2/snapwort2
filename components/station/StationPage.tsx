@@ -1,4 +1,4 @@
-// components/station/StationPage.tsx
+// components/station/StationPage.tsx - FIXED VERSION
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,7 +9,8 @@ import {
   BookOpen, 
   Target,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { SkillBlock } from './SkillBlock';
@@ -19,6 +20,7 @@ import {
   getSkills, 
   createSkill, 
   deleteSkill,
+  createStation,
   Station, 
   Skill 
 } from '@/lib/firestore-station';
@@ -34,34 +36,113 @@ export function StationPage({ stationId }: StationPageProps) {
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Station data mapping for fallback creation
+  const stationDefaults: Record<string, { name: string; description: string; icon: string }> = {
+    'supermarket': {
+      name: 'Supermarket',
+      description: 'Practice real-world conversations at the Supermarket. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🛒'
+    },
+    'bank': {
+      name: 'Bank', 
+      description: 'Practice real-world conversations at the Bank. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🏦'
+    },
+    'museum': {
+      name: 'Museum',
+      description: 'Practice real-world conversations at the Museum. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🏛️'
+    },
+    'cafe': {
+      name: 'Café',
+      description: 'Practice real-world conversations at the Café. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '☕'
+    },
+    'school': {
+      name: 'School',
+      description: 'Practice real-world conversations at the School. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🎓'
+    },
+    'hospital': {
+      name: 'Hospital',
+      description: 'Practice real-world conversations at the Hospital. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🏥'
+    },
+    'airport': {
+      name: 'Airport',
+      description: 'Practice real-world conversations at the Airport. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '✈️'
+    },
+    'home': {
+      name: 'Residential Area',
+      description: 'Practice real-world conversations in the Residential Area. Develop your language skills through immersive scenarios and structured learning paths.',
+      icon: '🏠'
+    }
+  };
 
   // Load station and skills data
   useEffect(() => {
     loadStationData();
-  }, [stationId]);
+  }, [stationId, retryCount]);
 
   const loadStationData = async () => {
     try {
       setLoading(true);
       setError(null);
+      
+      console.log('Loading station data for:', stationId);
 
-      // Load station info
-      const stationData = await getStation(stationId);
+      // Try to get station info
+      let stationData = await getStation(stationId);
+      
+      // If station doesn't exist, create it
       if (!stationData) {
-        setError('Station not found');
-        return;
+        console.log('Station not found, creating it...');
+        
+        const stationInfo = stationDefaults[stationId];
+        if (!stationInfo) {
+          setError(`Unknown station: ${stationId}`);
+          return;
+        }
+
+        // Create the station
+        await createStation(stationInfo);
+        console.log('Station created, fetching again...');
+        
+        // Wait a moment for Firestore consistency
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Try to get it again
+        stationData = await getStation(stationId);
+        
+        if (!stationData) {
+          console.error('Failed to create or retrieve station');
+          setError('Failed to initialize station');
+          return;
+        }
       }
+
+      console.log('Station loaded:', stationData);
       setStation(stationData);
 
       // Load skills
+      console.log('Loading skills...');
       const skillsData = await getSkills(stationId);
+      console.log('Skills loaded:', skillsData);
       setSkills(skillsData);
+      
     } catch (err) {
       console.error('Error loading station data:', err);
-      setError('Failed to load station data');
+      setError(err instanceof Error ? err.message : 'Failed to load station data');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
   };
 
   const handleAddSkill = async (skillData: { name: string; description: string }) => {
@@ -98,10 +179,15 @@ export function StationPage({ stationId }: StationPageProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center max-w-md">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <h3 className="text-xl font-semibold text-gray-800 mb-2">Loading Station</h3>
-          <p className="text-gray-600">Please wait while we load your learning station...</p>
+          <p className="text-gray-600 text-center">
+            {retryCount > 0 ? 'Retrying...' : 'Please wait while we load your learning station...'}
+          </p>
+          {retryCount > 0 && (
+            <p className="text-sm text-gray-500 mt-2">Attempt {retryCount + 1}</p>
+          )}
         </div>
       </div>
     );
@@ -114,12 +200,21 @@ export function StationPage({ stationId }: StationPageProps) {
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Station Error</h2>
           <p className="text-gray-600 mb-6">{error || 'Station not found'}</p>
-          <button
-            onClick={goBack}
-            className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-medium transition-colors"
-          >
-            Back to Map
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleRetry}
+              className="flex items-center flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl font-medium transition-colors"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </button>
+            <button
+              onClick={goBack}
+              className="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-3 rounded-xl font-medium transition-colors"
+            >
+              Back to Map
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -161,6 +256,22 @@ export function StationPage({ stationId }: StationPageProps) {
             {station.description}
           </p>
         </div>
+
+        {/* Error Alert (if any) */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-8">
+            <div className="flex items-center">
+              <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+              <p className="text-red-700">{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="ml-auto text-red-500 hover:text-red-700"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Skills Header with Add Button */}
         <div className="flex items-center justify-between mb-8">
