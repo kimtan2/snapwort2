@@ -617,7 +617,7 @@ export default function LandMapPage() {
         if (!existingStation) {
           console.log(`Creating station: ${location.name}`);
           // Create station if it doesn't exist
-          await createStation({
+          await createStation(location.id, {
             name: location.name,
             description: `Practice real-world conversations at ${location.name}. Develop your language skills through immersive scenarios and structured learning paths.`,
             icon: location.name === 'Supermarket' ? '🛒' :

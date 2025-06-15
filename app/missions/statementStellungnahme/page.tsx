@@ -1,11 +1,11 @@
-// app/missions/statementStellungnahme/page.tsx - UPDATED
+// app/missions/statementStellungnahme/page.tsx - COMPLETE VERSION
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, MessageSquare, Mic, Square, Play, RotateCcw, ThumbsUp, ThumbsDown, 
   Send, Sparkles, Award, Volume2, Clock, Users, Edit3, Copy, CheckCircle, 
-  Target, Shield, Zap, Star, FileText, Brain, Rocket, Heart
+  Target, Shield, Zap, Star, FileText, Brain, Rocket, Heart, X
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { data } from '../../land/data/statementStellungnahmeData';
@@ -286,6 +286,14 @@ export default function StatementStellungnahmePage() {
       audioRef.current.src = audioUrl;
       audioRef.current.play();
     }
+  };
+
+  const resetRecording = () => {
+    setRecordedAudio(null);
+    setAudioUrl(null);
+    setTranscription('');
+    setEditedTranscription('');
+    setIsRecording(false);
   };
 
   const submitResponse = async () => {
@@ -609,7 +617,6 @@ Provide feedback and a polished version in this exact JSON format:
     );
   }
 
-  // Rest of the component remains the same...
   // Loading Phase
   if (currentPhase === 'loading') {
     return (
@@ -661,8 +668,223 @@ Provide feedback and a polished version in this exact JSON format:
     );
   }
 
-  // Continue with the rest of the existing phases...
-  // For brevity, I'll include just the feedback phase to show the station-specific return button
+  // Context Phase
+  if (currentPhase === 'context') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center relative overflow-hidden">
+        <div className="max-w-4xl w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl mx-4">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center shadow-2xl mb-6">
+              <Target className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-4">Mission Context</h1>
+            <div className="bg-blue-500/20 rounded-2xl p-6 border border-blue-400/30 mb-6">
+              <p className="text-blue-100 text-lg leading-relaxed">{context}</p>
+            </div>
+            {selectedStatement && (
+              <div className="bg-green-500/20 rounded-2xl p-6 border border-green-400/30">
+                <h3 className="text-green-300 font-semibold mb-3">
+                  {missionType === 'agreeDisagree' ? 'Statement to Analyze' : 'Situation'}
+                </h3>
+                <p className="text-green-100 text-lg leading-relaxed">"{selectedStatement.statement}"</p>
+              </div>
+            )}
+          </div>
+          <MissionProgressBar />
+        </div>
+      </div>
+    );
+  }
+
+  // Choice Phase (for agree/disagree missions)
+  if (currentPhase === 'choice') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 flex items-center justify-center relative overflow-hidden">
+        <div className="max-w-4xl w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl mx-4">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-2xl mb-6">
+              <MessageSquare className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-6">Choose Your Position</h1>
+            {selectedStatement && (
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20 mb-8">
+                <p className="text-white text-lg leading-relaxed">"{selectedStatement.statement}"</p>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 gap-6">
+              <button
+                onClick={() => handlePositionChoice('agree')}
+                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white p-6 rounded-2xl font-semibold text-xl shadow-2xl transform transition-all duration-300 hover:scale-105"
+              >
+                <ThumbsUp className="w-8 h-8 mx-auto mb-3" />
+                I Agree
+              </button>
+              
+              <button
+                onClick={() => handlePositionChoice('disagree')}
+                className="bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white p-6 rounded-2xl font-semibold text-xl shadow-2xl transform transition-all duration-300 hover:scale-105"
+              >
+                <ThumbsDown className="w-8 h-8 mx-auto mb-3" />
+                I Disagree
+              </button>
+            </div>
+          </div>
+          <MissionProgressBar />
+        </div>
+      </div>
+    );
+  }
+
+  // Recording Phase
+  if (currentPhase === 'recording') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 flex items-center justify-center relative overflow-hidden">
+        <div className="max-w-4xl w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl mx-4">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-red-400 to-pink-500 rounded-full flex items-center justify-center shadow-2xl mb-6">
+              <Mic className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-4">Record Your Response</h1>
+            
+            {/* Show context and statement */}
+            <div className="bg-blue-500/20 rounded-2xl p-4 border border-blue-400/30 mb-4">
+              <p className="text-blue-100 text-sm">{context}</p>
+            </div>
+            
+            {selectedStatement && (
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20 mb-8">
+                <h3 className="text-green-300 font-semibold mb-3">
+                  {missionType === 'agreeDisagree' ? `Statement (Your position: ${userPosition})` : 'Situation'}
+                </h3>
+                <p className="text-white text-lg leading-relaxed">"{selectedStatement.statement}"</p>
+              </div>
+            )}
+
+            {/* Recording Controls */}
+            <div className="flex items-center justify-center space-x-6 mb-8">
+              {!isRecording && !recordedAudio && (
+                <button
+                  onClick={startRecording}
+                  className="flex items-center justify-center bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                >
+                  <Mic size={32} />
+                </button>
+              )}
+              
+              {isRecording && (
+                <button
+                  onClick={stopRecording}
+                  className="flex items-center justify-center bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-full w-20 h-20 shadow-xl animate-pulse"
+                >
+                  <Square size={32} />
+                </button>
+              )}
+              
+              {recordedAudio && !isRecording && (
+                <>
+                  <button
+                    onClick={playRecording}
+                    className="flex items-center justify-center bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                  >
+                    <Play size={32} />
+                  </button>
+                  
+                  <button
+                    onClick={resetRecording}
+                    className="flex items-center justify-center bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-full w-20 h-20 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+                  >
+                    <RotateCcw size={32} />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {isRecording && (
+              <div className="text-center mb-6">
+                <div className="bg-red-100 text-red-700 px-4 py-2 rounded-full inline-flex items-center">
+                  <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+                  Recording in progress...
+                </div>
+              </div>
+            )}
+          </div>
+          <MissionProgressBar />
+          <audio ref={audioRef} className="hidden" />
+        </div>
+      </div>
+    );
+  }
+
+  // Transcription Phase
+  if (currentPhase === 'transcription') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 flex items-center justify-center relative overflow-hidden">
+        <div className="max-w-4xl w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl mx-4">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center shadow-2xl mb-6 animate-pulse">
+              <FileText className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-4">Review & Edit Transcription</h1>
+            <p className="text-blue-200 text-lg mb-8">
+              Your speech has been converted to text. Please review and edit if needed.
+            </p>
+            
+            {transcription && (
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20 mb-6">
+                <h3 className="text-green-300 font-semibold mb-3">Original Transcription:</h3>
+                <p className="text-white text-lg italic">{transcription}</p>
+              </div>
+            )}
+            
+            <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+              <h3 className="text-blue-300 font-semibold mb-3">Edit Your Response:</h3>
+              <textarea
+                value={editedTranscription}
+                onChange={(e) => setEditedTranscription(e.target.value)}
+                className="w-full p-4 bg-white/20 border border-white/30 rounded-lg text-white placeholder-gray-300 min-h-[120px] resize-none focus:outline-none focus:border-blue-400"
+                placeholder="Your transcribed response will appear here..."
+              />
+              
+              <button
+                onClick={submitResponse}
+                disabled={!editedTranscription.trim()}
+                className={`mt-4 flex items-center justify-center mx-auto px-8 py-3 rounded-xl font-semibold text-lg shadow-2xl transform transition-all duration-300 hover:scale-105 ${
+                  editedTranscription.trim()
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
+                    : 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                }`}
+              >
+                <Send className="w-6 h-6 mr-2" />
+                Submit Response
+              </button>
+            </div>
+          </div>
+          <MissionProgressBar />
+        </div>
+      </div>
+    );
+  }
+
+  // Processing Phase
+  if (currentPhase === 'processing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-red-900 flex items-center justify-center relative overflow-hidden">
+        <div className="max-w-2xl w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 shadow-2xl mx-4">
+          <div className="text-center">
+            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center shadow-2xl mb-8 animate-spin">
+              <Brain className="w-12 h-12 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-4">Processing Response</h1>
+            <p className="text-purple-200 text-lg mb-8">
+              AI is analyzing your response and generating personalized feedback...
+            </p>
+            <MissionProgressBar />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Feedback Phase
   if (currentPhase === 'feedback') {
@@ -802,6 +1024,6 @@ Provide feedback and a polished version in this exact JSON format:
     );
   }
 
-  // Include all other phases from the original component...
+  // Fallback return null
   return null;
 }

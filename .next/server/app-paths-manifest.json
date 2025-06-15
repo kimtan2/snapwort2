@@ -1,6 +1,7 @@
 {
+  "/favicon.ico/route": "app/favicon.ico/route.js",
   "/_not-found/page": "app/_not-found/page.js",
-  "/api/generate-custom-mission/route": "app/api/generate-custom-mission/route.js",
+  "/land/page": "app/land/page.js",
   "/stations/[stationId]/page": "app/stations/[stationId]/page.js",
   "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js"
 }
