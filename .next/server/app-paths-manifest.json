@@ -1,9 +1,6 @@
 {
-  "/favicon.ico/route": "app/favicon.ico/route.js",
   "/_not-found/page": "app/_not-found/page.js",
-  "/api/generate-custom-mission/route": "app/api/generate-custom-mission/route.js",
-  "/api/transcribe-audio/route": "app/api/transcribe-audio/route.js",
-  "/api/analyze-statement-response/route": "app/api/analyze-statement-response/route.js",
-  "/stations/[stationId]/page": "app/stations/[stationId]/page.js",
-  "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js"
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/missions/statementStellungnahme/page": "app/missions/statementStellungnahme/page.js",
+  "/stations/[stationId]/page": "app/stations/[stationId]/page.js"
 }
