@@ -108,7 +108,7 @@ export function StationPage({ stationId }: StationPageProps) {
         }
 
         // Create the station
-        await createStation(stationInfo);
+        await createStation(stationId, stationInfo);
         console.log('Station created, fetching again...');
         
         // Wait a moment for Firestore consistency

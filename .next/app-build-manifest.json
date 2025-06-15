@@ -11,6 +11,16 @@
       "static/chunks/main-app.js",
       "static/chunks/app/stations/[stationId]/page.js"
     ],
+    "/missions/statementStellungnahme/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/missions/statementStellungnahme/page.js"
+    ],
+    "/api/generate-custom-mission/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/generate-custom-mission/route.js"
+    ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

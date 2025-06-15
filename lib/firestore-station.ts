@@ -10,7 +10,8 @@ import {
     query, 
     orderBy, 
     where,
-    Timestamp 
+    Timestamp, 
+    setDoc
   } from 'firebase/firestore';
   import { db } from './firebase';
   
@@ -54,14 +55,15 @@ import {
     completedAt: Date;
   }
   
-  // Station functions
-  export const createStation = async (stationData: Omit<Station, 'id' | 'createdAt'>) => {
-    const docRef = await addDoc(collection(db, 'stations'), {
-      ...stationData,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
-  };
+ // Update the createStation function
+export const createStation = async (stationId: string, stationData: Omit<Station, 'id' | 'createdAt'>) => {
+  const docRef = doc(db, 'stations', stationId); // Use specific stationId as document ID
+  await setDoc(docRef, {
+    ...stationData,
+    createdAt: Timestamp.now()
+  });
+  return stationId;
+};
   
   export const getStation = async (stationId: string): Promise<Station | null> => {
     const docRef = doc(db, 'stations', stationId);
