@@ -1,4 +1,4 @@
-// components/station/MissionHistoryModal.tsx
+// components/station/MissionHistoryModal.tsx - IMPROVED VERSION
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -11,7 +11,8 @@ import {
   Star,
   Clock,
   Target,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   getMissionAttempts,
@@ -39,6 +40,7 @@ export function MissionHistoryModal({
   const [attempts, setAttempts] = useState<MissionAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAttempt, setSelectedAttempt] = useState<MissionAttempt | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,10 +51,21 @@ export function MissionHistoryModal({
   const loadAttempts = async () => {
     try {
       setLoading(true);
+      setError(null);
+      console.log('Loading attempts for mission:', mission.id);
+      
       const attemptsData = await getMissionAttempts(stationId, skillId, mission.id, userId);
+      console.log('Attempts loaded:', attemptsData);
+      
       setAttempts(attemptsData);
+      
+      // Auto-select the most recent attempt if available
+      if (attemptsData.length > 0 && !selectedAttempt) {
+        setSelectedAttempt(attemptsData[0]);
+      }
     } catch (err) {
       console.error('Error loading attempts:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load attempts');
     } finally {
       setLoading(false);
     }
@@ -145,13 +158,31 @@ export function MissionHistoryModal({
             
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin mr-3" />
+                <span className="text-gray-600">Loading attempts...</span>
+              </div>
+            ) : error ? (
+              <div className="text-center py-12">
+                <AlertTriangle className="w-16 h-16 text-red-300 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-red-600 mb-2">Error Loading History</h4>
+                <p className="text-red-500 text-sm mb-4">{error}</p>
+                <button
+                  onClick={loadAttempts}
+                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  Try Again
+                </button>
               </div>
             ) : attempts.length === 0 ? (
               <div className="text-center py-12">
                 <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h4 className="text-lg font-medium text-gray-600 mb-2">No Attempts Yet</h4>
                 <p className="text-gray-500">Complete this mission to see your history here.</p>
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-blue-700 text-sm">
+                    💡 <strong>Tip:</strong> Start the mission and complete it to track your progress and improvement over time!
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -230,12 +261,26 @@ export function MissionHistoryModal({
                   </div>
                 )}
               </div>
-            ) : (
+            ) : attempts.length > 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-600 mb-2">Select an Attempt</h4>
                   <p className="text-gray-500">Choose an attempt from the list to view details.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-600 mb-2">Ready to Start?</h4>
+                  <p className="text-gray-500 mb-4">Complete your first attempt to see detailed feedback and track your progress.</p>
+                  <button
+                    onClick={onClose}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Start Mission
+                  </button>
                 </div>
               </div>
             )}

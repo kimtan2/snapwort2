@@ -1,4 +1,4 @@
-// components/station/MissionCard.tsx
+// components/station/MissionCard.tsx - FIXED VERSION
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -48,7 +48,9 @@ export function MissionCard({ mission, stationId, skillId, onDelete }: MissionCa
   const loadCompletionStatus = async () => {
     try {
       setLoading(true);
+      console.log('Loading completion status for mission:', mission.id);
       const status = await getMissionCompletionStatus(stationId, skillId, mission.id, userId);
+      console.log('Completion status result:', status);
       setCompletionStatus(status);
     } catch (err) {
       console.error('Error loading completion status:', err);
@@ -137,15 +139,27 @@ export function MissionCard({ mission, stationId, skillId, onDelete }: MissionCa
 
           {/* Actions */}
           <div className="flex items-center space-x-1 ml-2">
-            {completionStatus.completed && (
-              <button
-                onClick={() => setIsHistoryOpen(true)}
-                className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors"
-                title="View History"
-              >
-                <History className="w-4 h-4" />
-              </button>
-            )}
+            {/* Always show history button, but disable if no attempts */}
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              disabled={loading}
+              className={`p-2 rounded-lg transition-colors ${
+                loading 
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : completionStatus.completed
+                    ? 'bg-blue-100 hover:bg-blue-200 text-blue-600'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-500'
+              }`}
+              title={
+                loading 
+                  ? 'Loading...'
+                  : completionStatus.completed 
+                    ? 'View History' 
+                    : 'No attempts yet'
+              }
+            >
+              <History className="w-4 h-4" />
+            </button>
             
             <button
               onClick={() => setShowDeleteConfirm(true)}
@@ -209,7 +223,7 @@ export function MissionCard({ mission, stationId, skillId, onDelete }: MissionCa
         </div>
       </div>
 
-      {/* Mission History Modal */}
+      {/* Mission History Modal - Always available */}
       <MissionHistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}

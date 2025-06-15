@@ -1,15 +1,16 @@
-// app/missions/statementStellungnahme/page.tsx - COMPLETE VERSION
+// app/missions/statementStellungnahme/page.tsx - ENHANCED WITH HISTORY
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, MessageSquare, Mic, Square, Play, RotateCcw, ThumbsUp, ThumbsDown, 
   Send, Sparkles, Award, Volume2, Clock, Users, Edit3, Copy, CheckCircle, 
-  Target, Shield, Zap, Star, FileText, Brain, Rocket, Heart, X
+  Target, Shield, Zap, Star, FileText, Brain, Rocket, Heart, X, History
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { data } from '../../land/data/statementStellungnahmeData';
 import { createMissionAttempt } from '@/lib/firestore-station';
+import { MissionHistoryModal } from '@/components/station/MissionHistoryModal';
 
 interface Statement {
   id: number;
@@ -42,6 +43,17 @@ interface StationMissionContext {
   missionData: CustomMission;
 }
 
+// Mission interface for history modal
+interface Mission {
+  id: string;
+  title: string;
+  type: 'agreeDisagree' | 'situationReact';
+  data: any;
+  skillId: string;
+  stationId: string;
+  createdAt: Date;
+}
+
 export default function StatementStellungnahmePage() {
   const router = useRouter();
   const [currentPhase, setCurrentPhase] = useState<Phase>('briefing');
@@ -62,6 +74,10 @@ export default function StatementStellungnahmePage() {
   const [missionType, setMissionType] = useState<MissionType>('agreeDisagree');
   const [stationMissionContext, setStationMissionContext] = useState<StationMissionContext | null>(null);
   const [isStationMission, setIsStationMission] = useState(false);
+  
+  // History modal state
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [missionForHistory, setMissionForHistory] = useState<Mission | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -296,6 +312,41 @@ export default function StatementStellungnahmePage() {
     setIsRecording(false);
   };
 
+  // Calculate score based on feedback quality
+  const calculateScore = (feedbackData: FeedbackData): number => {
+    // Basic scoring algorithm
+    let score = 50; // Base score
+    
+    // Add points based on response length (complexity)
+    const responseLength = editedTranscription.trim().length;
+    if (responseLength > 100) score += 15;
+    else if (responseLength > 50) score += 10;
+    else if (responseLength > 20) score += 5;
+    
+    // Add points based on vocabulary improvements (fewer needed = better)
+    const vocabImprovements = feedbackData.vocabularyImprovements.length;
+    if (vocabImprovements <= 2) score += 20;
+    else if (vocabImprovements <= 4) score += 10;
+    else score += 5;
+    
+    // Add points for having a polished version that's not too different
+    if (feedbackData.polishedVersion) {
+      const similarity = calculateSimilarity(editedTranscription, feedbackData.polishedVersion);
+      score += Math.round(similarity * 15); // Up to 15 points for similarity
+    }
+    
+    // Ensure score is between 30 and 100
+    return Math.max(30, Math.min(100, score));
+  };
+
+  // Simple similarity calculation
+  const calculateSimilarity = (text1: string, text2: string): number => {
+    const words1 = text1.toLowerCase().split(/\s+/);
+    const words2 = text2.toLowerCase().split(/\s+/);
+    const intersection = words1.filter(word => words2.includes(word));
+    return intersection.length / Math.max(words1.length, words2.length);
+  };
+
   const submitResponse = async () => {
     if (!selectedStatement || !editedTranscription.trim()) return;
 
@@ -330,6 +381,9 @@ export default function StatementStellungnahmePage() {
       const feedbackData = await feedbackResponse.json();
       setFeedback(feedbackData);
 
+      // Calculate score
+      const calculatedScore = calculateScore(feedbackData);
+
       // Save mission attempt to Firestore if this is a station mission
       if (isStationMission && stationMissionContext) {
         try {
@@ -342,10 +396,23 @@ export default function StatementStellungnahmePage() {
               userResponse: editedTranscription,
               feedback: feedbackData.briefFeedback,
               polishedVersion: feedbackData.polishedVersion,
-              score: 85 // You could calculate this based on feedback quality
+              score: calculatedScore
             }
           );
           console.log('Mission attempt saved to Firestore');
+          
+          // Create mission object for history modal
+          setMissionForHistory({
+            id: stationMissionContext.missionId,
+            title: missionType === 'agreeDisagree' 
+              ? `Discussion: ${customMission?.question?.substring(0, 50)}...`
+              : `Situation: ${customMission?.situation?.substring(0, 50)}...`,
+            type: missionType,
+            data: customMission,
+            skillId: stationMissionContext.skillId,
+            stationId: stationMissionContext.stationId,
+            createdAt: new Date()
+          });
         } catch (saveError) {
           console.error('Error saving mission attempt:', saveError);
           // Don't fail the mission if saving fails
@@ -411,6 +478,7 @@ Provide feedback and a polished version in this exact JSON format:
     setMissionType('agreeDisagree');
     setStationMissionContext(null);
     setIsStationMission(false);
+    setMissionForHistory(null);
     sessionStorage.removeItem('currentCustomMission');
     sessionStorage.removeItem('currentStationMission');
   };
@@ -900,9 +968,24 @@ Provide feedback and a polished version in this exact JSON format:
                 <ChevronLeft className="w-5 h-5 mr-1" />
                 {isStationMission ? 'Back to Station' : 'Back to Map'}
               </button>
-              <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-full text-sm font-medium flex items-center">
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Mission Complete
+              
+              <div className="flex items-center space-x-4">
+                {/* History Button - Only show for station missions */}
+                {isStationMission && missionForHistory && (
+                  <button
+                    onClick={() => setIsHistoryModalOpen(true)}
+                    className="flex items-center bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white px-4 py-2 rounded-full text-sm font-medium shadow-md hover:shadow-lg transform transition-all duration-200 hover:scale-105"
+                    title="View Mission History"
+                  >
+                    <History className="w-4 h-4 mr-2" />
+                    History
+                  </button>
+                )}
+                
+                <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-full text-sm font-medium flex items-center">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Mission Complete
+                </div>
               </div>
             </div>
           </div>
@@ -1020,6 +1103,18 @@ Provide feedback and a polished version in this exact JSON format:
             </button>
           </div>
         </div>
+        
+        {/* Mission History Modal */}
+        {isStationMission && missionForHistory && (
+          <MissionHistoryModal
+            isOpen={isHistoryModalOpen}
+            onClose={() => setIsHistoryModalOpen(false)}
+            mission={missionForHistory}
+            stationId={missionForHistory.stationId}
+            skillId={missionForHistory.skillId}
+            userId={userId}
+          />
+        )}
       </div>
     );
   }
